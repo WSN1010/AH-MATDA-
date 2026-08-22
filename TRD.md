@@ -147,26 +147,29 @@ Draft
 GitHub Copilot SDK의 `CopilotClient`를 프로그래밍 방식의 모델 세션으로 사용한다.
 
 - SDK에 포함된 기본 runtime을 Worker의 자식 프로세스로 실행하거나 공식적으로 지원되는 원격 연결을 사용
+- Worker replica마다 장수명 `CopilotClient` 하나를 유지하고 Job, 역할, 모델별 독립 세션을 격리 단위로 사용
 - 문서 작성 및 평가 세션 시작
 - 선택 모델 지정
 - 구조화 프롬프트 전송과 이벤트 수신
 - 세션별 작업 디렉터리/로그/Telemetry 설정
-- Azure에서는 SDK의 `GitHubToken` 옵션에 Key Vault의 최소 권한 서비스 자격증명을 런타임 주입
+- Azure에서는 Key Vault로 보호한 GitHub App 자격증명으로 짧은 수명의 installation token을 발급하고, SDK runtime 환경의 `COPILOT_GITHUB_TOKEN`에 주입
 - Copilot SDK는 최소 Spec Architect와 독립 Reviewer 한 단계에서 반드시 성공해야 하며, 이 단계를 건너뛴 결과는 Ready가 될 수 없음
+- 시작 시 `ListModelsAsync` 결과와 구성된 모델 풀의 교집합을 확인하고 서로 다른 모델 ID가 2개 미만이면 명시적으로 실패
 
 `CopilotClient`의 Worker replica당 수명, 세션 동시성, child process 수는 부하 테스트로 결정한다. 공식적으로 안전한 경우 장수명 client와 Job별 session을 사용하고, 그렇지 않으면 제한된 client pool로 프로세스 수를 통제한다.
 
 ### 5.2 코드 작성 방지
 
-- 세션에 파일 쓰기, 셸, Git, 배포 도구를 제공하지 않는다.
-- `AvailableTools`를 문서 생성에 필요한 안전한 내부 조회 도구로 제한한다.
+- `CopilotClientMode.Empty`로 실행하고 세션에 파일 쓰기, 셸, Git, 배포 도구를 제공하지 않는다.
+- `AvailableTools`를 빈 목록으로 두고 커스텀 `Tools`를 등록하지 않으며 모든 권한 요청을 거부한다.
+- Memory와 교차 세션 저장소를 비활성화하고 역할별 세션은 완료 후 삭제한다.
 - 출력은 Markdown 또는 구조화된 `ProjectSpec` 스키마만 허용한다.
 - 코드 펜스가 필요한 경우 API 계약/데이터 예시/디렉터리 구조로 용도를 제한한다.
 - 실제 제품 구현을 요청받아도 Spec Architect가 요구사항으로 변환한다.
 
 ### 5.3 `IChatClient` 경계
 
-Agent Framework의 `ChatClientAgent`/`AsAIAgent` 패턴과 호환되도록 모델 호출을 `IChatClient` 중심으로 구성한다. Copilot SDK에 직접 `IChatClient` 구현이 제공되지 않는 버전이면 얇은 어댑터를 `Ajure.Infrastructure`에 둔다.
+Agent Framework의 `ChatClientAgent`/`AsAIAgent` 패턴과 호환되도록 모델 호출을 `IChatClient` 중심으로 구성한다. Copilot SDK에 직접 `IChatClient` 구현이 제공되지 않는 버전이면 얇은 세션 어댑터를 `Ajure.Infrastructure`에 둔다. 세션 생성 시 모델이 고정되므로 하나의 어댑터 인스턴스는 하나의 모델 ID와 역할만 담당한다.
 
 어댑터 책임:
 
@@ -178,20 +181,29 @@ Agent Framework의 `ChatClientAgent`/`AsAIAgent` 패턴과 호환되도록 모�
 
 패키지 버전과 API 표면은 구현 시 공식 NuGet 및 Microsoft Learn을 다시 확인해 잠근다.
 
-보조 평가자는 다른 `IChatClient` 제공자를 사용할 수 있지만 Copilot SDK 필수 단계를 조용히 대체해서는 안 된다. Copilot SDK 단계가 인증, 정책 또는 런타임 문제로 실패하면 Job은 명시적으로 실패한다.
+MVP의 작성 및 평가 세션은 Copilot SDK를 사용하며, 평가 다양성은 서로 다른 모델 ID로 확보한다. 다른 `IChatClient` 제공자를 Copilot SDK 필수 단계의 대체 성공으로 처리하지 않는다. Copilot SDK 단계가 인증, 정책 또는 런타임 문제로 실패하면 Job은 명시적으로 실패한다.
 
-### 5.4 P0 Copilot SDK 호스팅 검증 게이트
+### 5.4 P0 Copilot SDK 로컬 실증 게이트
 
-Copilot SDK는 전체 생성 경로의 필수 의존성이므로 본 구현보다 먼저 다음 Spike를 통과해야 한다.
+Copilot SDK는 전체 생성 경로의 필수 의존성이므로 B4보다 먼저 개발 호스트에서 다음 Spike를 통과해야 한다. 이 게이트는 Azure 호스팅 검증을 대체하지 않는다.
 
-1. SDK 기본 runtime을 포함한 Linux 컨테이너를 빌드한다.
-2. 대화형 로그인 없이 Key Vault에서 주입한 `GitHubToken`으로 인증한다.
-3. Azure Container Apps에서 client 시작, session 생성, 응답 수신, 정상 종료를 확인한다.
-4. 동시에 여러 격리 session을 실행해 데이터 혼합, 프로세스 수, 메모리, 제한, 재시도를 측정한다.
-5. 서비스 자격증명으로 다중 사용자 요청을 처리하는 방식이 GitHub 라이선스와 이용 약관상 허용되는지 문서로 확인한다.
-6. 예상 요청량의 비용/쿼터와 조직 정책을 확인한다.
+1. SDK 기본 runtime을 로컬 Aspire Worker 프로세스에서 시작한다.
+2. user-secrets 또는 이미 로그인한 개발자 자격증명으로 비대화형 session 생성과 응답 수신을 확인한다.
+3. `ListModelsAsync`에서 구성된 서로 다른 모델 ID 2개 이상을 확인한다.
+4. 서로 다른 모델의 격리 session을 동시에 실행해 데이터가 섞이지 않는지 확인한다.
+5. 파일 쓰기 요청에서도 도구 실행 이벤트가 0건인지 확인한다.
+6. 취소, 제한 시간, session 삭제와 client 종료를 확인한다.
 
-이 게이트가 실패하면 Copilot SDK 필수 조건을 충족할 수 없으므로 다른 제공자로 몰래 대체해 구현을 계속하지 않는다. 대회 운영진과 아키텍처 조건을 재확인할 때까지 프로젝트 구현을 Blocked로 표시한다.
+이 게이트가 실패하면 B4 이후 실제 모델 워크플로를 진행하지 않고 원인을 명시한다.
+
+### 5.5 Azure 호스팅 검증 게이트
+
+다음 항목은 B7에서 Azure 배포와 함께 검증하며 현재 통과한 것으로 서술하지 않는다.
+
+1. Azure Container Apps에서 Copilot runtime 시작, session 생성, 응답 수신, 정상 종료
+2. GitHub App installation token을 `COPILOT_GITHUB_TOKEN`으로 runtime에 주입하고 만료 전에 갱신
+3. 다중 session의 프로세스 수, 메모리, 격리, 제한, 재시도 측정
+4. 서비스 자격증명 사용의 GitHub 조직 정책, 라이선스, 비용과 쿼터 확인
 
 ## 6. 정규화된 명세 모델
 
@@ -299,6 +311,8 @@ JobEvent
 - 기술 결정 없는 기능 요구사항
 - 요구하지 않은 과도한 기술 구성
 
+평가 결과의 모델 배정, 정규화, fingerprint, 합의, 타이브레이크와 보정 입력은 [EVALUATION.md](EVALUATION.md) §6을 단일 기준으로 구현한다.
+
 ### 8.3 회귀 검사
 
 기준 버전의 요구사항 그래프와 후보 그래프를 비교한다.
@@ -390,6 +404,7 @@ MVP 규모에 적합한 단순 Azure Storage 구성을 사용하고, 쿼리 요�
 - Job Lease로 동일 작업의 동시 실행을 방지한다.
 - 취소된 Job은 새 버전을 Ready로 승격하지 않는다.
 - Repair는 최대 3회이며 동일 Finding이 반복되면 사용자 결정으로 전환한다.
+- 평가자 상충에 대한 타이브레이크는 Validation Run당 1회로 제한한다.
 
 ## 13. 관측성
 
@@ -411,13 +426,15 @@ MVP 규모에 적합한 단순 Azure Storage 구성을 사용하고, 쿼리 요�
 
 ```text
 Ajure.AppHost
-  ├─ web (Ajure.Web)
+  ├─ web (Ajure.Web, 프론트 프로젝트가 준비된 뒤 등록)
   ├─ api (Ajure.Api)
   ├─ worker (Ajure.Worker)
-  ├─ storage (Blob + Queue + Table / local Azurite)
+  ├─ storage (Blob + Queue + Table / local Azurite executable)
   ├─ key-vault reference
   └─ application-insights / OpenTelemetry
 ```
+
+로컬 Storage는 AppHost가 Azurite 실행 파일을 Aspire 리소스로 시작하며 Docker 또는 `RunAsEmulator()`에 의존하지 않는다. Azure 게시 모드에서는 같은 논리 리소스를 Azure Storage Account로 배포한다.
 
 ### 14.2 Azure 리소스
 
@@ -455,11 +472,11 @@ Ajure.AppHost
 ├─ AI-FILE-SPEC.md
 ├─ EVALUATION.md
 ├─ UX-SPEC.md
-├─ azure.yaml
+├─ azure.yaml              # B7에서 생성
 ├─ src/
 │  ├─ Ajure.AppHost/
 │  ├─ Ajure.ServiceDefaults/
-│  ├─ Ajure.Web/
+│  ├─ Ajure.Web/           # 프론트 담당이 별도 구현
 │  ├─ Ajure.Api/
 │  ├─ Ajure.Worker/
 │  ├─ Ajure.Agent/
@@ -490,6 +507,8 @@ Ajure.AppHost
 - Copilot SDK 어댑터의 메시지/이벤트 변환
 - `IChatClient` 오류/취소/스트리밍 동작
 - ProjectSpec 구조화 출력 파싱
+- 평가 실패와 Finding 0건의 구분
+- 동일 입력의 Finding fingerprint, 집계, 점수 결정성
 
 ### 통합 테스트
 - Queue -> Worker -> Blob/Table 체크포인트
@@ -515,12 +534,14 @@ Ajure.AppHost
 |---|---|---|
 | TD-001 | ProjectSpec을 유일한 의미 기준으로 사용 | 문서 간 드리프트 방지 |
 | TD-002 | Agent Framework로 명시적 워크플로 구성 | 필수 조건 충족 및 역할/상태 제어 |
-| TD-003 | Copilot SDK 세션에 실행 도구를 주지 않음 | 제품의 비코딩 경계 보장 |
+| TD-003 | Copilot SDK를 Empty 모드와 빈 도구 허용 목록으로 실행 | 제품의 비코딩 경계 보장 |
 | TD-004 | 결정적 검사 후 LLM 평가 | 비용 절감과 평가 신뢰성 향상 |
 | TD-005 | Queue 기반 Worker | 장시간 작업, 재시도, 복구 |
 | TD-006 | Azure Storage로 MVP 저장 | Aspire/Azure 통합과 운영 단순성 |
 | TD-007 | SSE 사용 | 단방향 진행 표시를 WebSocket보다 단순하게 구현 |
 | TD-008 | 불변 승인 버전 | 신뢰 가능한 회귀 기준선 확보 |
+| TD-009 | 서로 다른 모델 ID 2개 이상의 독립 평가와 결정적 Finding 집계 | 단일 모델 자기확증을 줄이고 재현 가능한 점수와 게이트 제공 |
+| TD-010 | 로컬 개발은 Aspire가 관리하는 실행 파일 리소스를 사용하고 컨테이너 런타임에 의존하지 않음 | 개발 환경 제약과 Azure 호스팅 게이트 분리 |
 
 ## 18. 구현 전 검증 항목
 
@@ -528,6 +549,9 @@ Ajure.AppHost
 - 선택 모델 목록과 조직 정책의 사용 가능성
 - 현재 Agent Framework 패키지의 안정 버전 및 Workflow API
 - Copilot SDK와 `IChatClient` 간 공식 어댑터 제공 여부
+- GitHub App installation token 발급과 갱신 방식
+- 조직 정책에서 서로 다른 모델 ID 2개 이상 사용 가능 여부
+- Azure Container Apps의 Copilot runtime 연결 방식과 동시성 한계
 - Aspire의 해당 버전 Azure Container Apps 배포 명령과 리소스 API
 - 대상 코딩 도구별 최신 지침 파일 규격
 

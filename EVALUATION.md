@@ -20,6 +20,7 @@ Ready =
   AND 미해결 Critical Decision = 0
   AND 최신 회귀 검사 통과
   AND 모든 Artifact가 동일 Spec Version
+  AND 서로 다른 모델 ID의 성공한 의미 평가 >= 2
 ```
 
 점수가 100점이어도 Hard Gate가 실패하면 Ready가 아니다.
@@ -114,8 +115,9 @@ FR/NFR -> AC 연결률이 100% 미만이면 이 영역 점수와 무관하게 Ha
 | HG-09 | 대상 파일 경로 또는 필수 문법 오류 |
 | HG-10 | 아주르 산출물에 제품 구현 코드 또는 실제 비밀 포함 |
 | HG-11 | Repair 3회 후 동일 Critical Finding 반복 |
-| HG-12 | 평가자 결과가 상충하고 합의되지 않음 |
+| HG-12 | 평가자 결과가 상충하고 1회 타이브레이크 후에도 합의되지 않음 |
 | HG-13 | 필수 Copilot SDK 작성/평가 단계가 완료되지 않음 |
+| HG-14 | 서로 다른 모델 ID의 성공한 의미 평가가 2건 미만이거나 필수 평가 봉투가 유효하지 않음 |
 
 ## 5. 검증 단계
 
@@ -145,12 +147,15 @@ FR/NFR -> AC 연결률이 100% 미만이면 이 영역 점수와 무관하게 Ha
 - Technical Reviewer
 - UX Reviewer
 
+평가 역할은 구성된 모델 풀에 결정적으로 배정하며, 성공한 평가에는 서로 다른 모델 ID가 2개 이상 포함돼야 한다. 역할마다 별도 세션을 사용하고 작성 세션을 재사용하지 않는다.
+
 각 Finding은 다음 구조를 가져야 한다.
 
 ```text
 id
 severity: Critical | Major | Minor
 category
+ruleKey
 statement
 evidence[]
 affectedIds[]
@@ -159,6 +164,7 @@ requiresUserDecision
 ```
 
 근거 없는 점수 차감은 허용하지 않는다.
+평가자는 `reviewComplete`, 여섯 영역 점수, Finding 배열을 포함한 봉투로 응답해야 한다. 봉투 누락, 스키마 위반 또는 2회 파싱 실패는 Finding 0건이 아니라 평가 실패로 처리한다.
 
 ### Stage 4 - Implementation Simulation
 
@@ -183,6 +189,7 @@ Implementation Simulator는 코드를 생성하지 않고 다음만 만든다.
 - 변경 범위는 affected IDs로 제한한다.
 - 수정 후 Stage 1부터 전체 검사를 다시 수행한다.
 - 최대 3회 반복한다.
+- 평가자와 모델 배정은 Validation Run 시작 시 고정하고 Repair 반복 사이에 변경하지 않는다.
 - 점수를 올리기 위해 요구사항을 삭제하거나 완화할 수 없다.
 
 ### Stage 7 - Ready or Needs Decision
@@ -196,9 +203,24 @@ Implementation Simulator는 코드를 생성하지 않고 다음만 만든다.
 ### 독립성
 
 - 작성자와 평가자의 세션을 분리한다.
-- 가능하면 작성 모델과 평가 모델을 다르게 구성한다.
+- 작성 모델과 평가 모델은 서로 다른 세션을 사용하고, 평가자 집합에는 서로 다른 모델 ID가 2개 이상 있어야 한다.
 - 평가자에게 이전 점수나 목표 점수 90을 노출하지 않는다.
 - 평가자는 수정 권한이 없으며 Finding만 반환한다.
+
+### 모델 배정
+
+1. Worker 시작 시 Copilot SDK의 사용 가능 모델과 구성 `Ajure:Review:ModelPool`의 교집합을 구성 순서대로 만든다.
+2. 모델이 2개 미만이면 `model_diversity_unavailable` 오류와 HG-14로 실패한다.
+3. `Product -> Technical -> UX` 고정 Reviewer 순서에 모델을 라운드 로빈으로 배정한다. Implementation Simulator는 Stage 4에서 별도 세션으로 실행하되 Reviewer 점수 집계에는 포함하지 않는다.
+4. 역할마다 독립 세션을 만들며 모델 ID와 세션 ID를 Validation Run에 저장한다.
+5. 실패한 역할은 같은 모델에서 한 번만 재시도한다. 이후 성공한 서로 다른 모델이 2개 미만이면 실패한다.
+
+### Finding 정규화
+
+- `ruleKey`는 `missing_ac`, `unverifiable_ac`, `contradiction_prd_trd`, `undefined_term`, `missing_state`, `missing_authz`, `missing_failure_handling`, `unjustified_component`, `scope_leak`, `nongoal_violation`, `ambiguous_metric`, `traceability_break`, `target_file_mismatch`, `security_gap`, `ops_gap`, `other` 중 하나다.
+- `affectedIds`는 실제 ProjectSpec에 존재하는 ID만 남기고 정렬한다. 존재하지 않는 ID는 별도 Minor Finding으로 보존한다.
+- 근거는 ProjectSpec 필드 또는 렌더 산출물에서 확인되는 경우에만 점수 및 보정 근거로 사용한다.
+- 의미 fingerprint는 `ruleKey + 정렬된 affectedIds`의 SHA-256이다. `other`이면서 영향 ID가 없는 Finding은 집계하지 않는다.
 
 ### 집계
 
@@ -206,8 +228,19 @@ Implementation Simulator는 코드를 생성하지 않고 다음만 만든다.
 - 의미 항목은 최소 2개의 독립 평가 결과 중앙값을 사용한다.
 - 평가 수가 짝수이면 정렬된 가운데 두 값의 산술 평균을 중앙값으로 사용한다.
 - 영역 점수는 소수점 첫째 자리까지 반올림하고 총점도 같은 정밀도를 유지한다.
-- Critical/Major 판정이 엇갈리면 보수적으로 높은 심각도를 사용하고 Resolution 단계로 보낸다.
-- 평가자 간 점수 차이가 영역별 3점 이상이면 HG-12 후보로 재평가한다.
+- 같은 fingerprint 또는 같은 `ruleKey`이면서 영향 ID Jaccard 유사도가 0.5 이상인 Finding을 하나의 cluster로 병합한다.
+- cluster의 심각도는 가장 높은 값을 사용하고, 지지 수는 서로 다른 모델 ID 수로 계산한다.
+- Critical은 성공 모델의 과반수이면서 최소 2개 모델이 지지해야 Confirmed다. 그 외에는 Disputed로 분류해 자동 보정하지 않는다.
+- Major/Minor 단독 Finding은 점수에 반영할 수 있지만 단독으로 Ready를 차단하지 않는다.
+- 영역 점수 차이가 3점 이상이거나 Disputed Critical이 있으면 세 번째 사용 가능 모델로 Validation Run당 한 번만 타이브레이크한다. 이후에도 상충하면 HG-12와 Needs Decision이다.
+- 심각도는 최대값, 영역 점수는 중앙값을 사용한다. 두 규칙은 의도적으로 다르다.
+
+### 보정 입력
+
+- Confirmed이고, 사용자 결정이 필요 없으며, 검증 가능한 근거가 있는 Finding만 Repair Agent에 전달한다.
+- 입력은 심각도 내림차순, 영향 ID, fingerprint 순으로 정렬하고 수정 가능 범위를 영향 ID 합집합으로 제한한다.
+- 같은 Critical fingerprint가 3회 연속 Confirmed면 HG-11이다.
+- 성공한 서로 다른 평가 모델이 2개 미만이거나 필수 Copilot SDK 단계가 누락되면 점수와 관계없이 Ready가 아니다.
 
 ### 안정성 검사
 
@@ -379,3 +412,4 @@ Intent Fidelity =
 4. Holdout Intent Fidelity 중앙값이 목표에 도달하거나, 미달 사실과 개선 계획을 공개한다.
 5. 점수 90 이상이지만 Critical 실패가 발생한 사례를 별도 분석한다.
 6. 평가 리포트에서 모든 차감에 근거와 관련 ID가 존재한다.
+7. Fake 모드 실행 결과는 종료 조건 판정과 외부 벤치마크 근거에서 제외한다.

@@ -37,16 +37,18 @@ tests/                     전체
 ### B0. 솔루션 스캐폴드
 
 - .NET 8+ 솔루션, TRD §15 구조대로 프로젝트 생성
-- Aspire AppHost + ServiceDefaults 구성, Azure Storage 에뮬레이터(Azurite) 리소스 등록
-- **DoD**: `dotnet build` 성공, `dotnet run --project src/Ajure.AppHost`로 대시보드에 모든 리소스 표시
+- Aspire AppHost + ServiceDefaults 구성, Azurite를 실행 파일 리소스로 등록
+- 로컬 Docker, 컨테이너 런타임, `RunAsEmulator()`를 사용하지 않음
+- **DoD**: `dotnet build` 성공, `dotnet run --project src/Ajure.AppHost`로 대시보드에 현재 구현된 모든 백엔드 리소스 표시. `Ajure.Web` 등록은 프론트 프로젝트가 준비된 뒤 협의
 
-### B1. P0 Copilot SDK 호스팅 스파이크 (차단 게이트)
+### B1. P0 Copilot SDK 로컬 실증 게이트 (B4 차단)
 
-TRD §5.4 그대로 수행한다. **이 게이트를 통과하기 전에는 B4 이후를 시작하지 않는다.**
+TRD §5.4를 개발 호스트에서 수행한다. **이 게이트를 통과하기 전에는 B4를 시작하지 않는다.** Azure 호스팅 검증은 B7이며 이 게이트로 대체하지 않는다.
 
-- Linux 컨테이너에서 `GitHubToken` 주입 비대화형 인증 → 세션 생성 → 응답 수신 확인
-- 동시 세션 격리, 프로세스 수, 메모리 측정
-- **DoD**: 스파이크 결과를 이 문서 하단 §9에 기록. 실패 시 작업 중단하고 팀 논의 (조용한 대체 금지)
+- 로컬 runtime 시작, 비대화형 인증, `ListModelsAsync`에서 서로 다른 모델 ID 2개 이상 확인
+- 서로 다른 모델의 동시 세션 격리와 응답 수신 확인
+- 파일 쓰기 요청의 도구 실행 이벤트 0건, 취소/제한 시간/세션 삭제 확인
+- **DoD**: 결과를 §9에 기록. 실패 시 B4를 중단하고 원인을 보고하며 다른 제공자로 조용히 대체하지 않음
 
 ### B2. ProjectSpec 모델과 저장소
 
@@ -61,12 +63,14 @@ TRD §5.4 그대로 수행한다. **이 게이트를 통과하기 전에는 B4 �
 - TRD §9의 전체 엔드포인트를 스텁으로 구현 (Problem Details 오류 형식 포함)
 - Queue → Worker → JobEvent 저장 → API SSE 재생(`Last-Event-ID`, heartbeat 15초) 연결
 - **Fake 모드**: `AJURE_FAKE_MODEL=true`면 Worker가 고정 지연과 함께 미리 준비된 단계 이벤트·샘플 문서 4종을 생성한다. 프론트는 이 모드로 전체 흐름을 개발한다.
+- Fake 모드는 `Development`에서만 켤 수 있고 생성 버전, Validation Run, Export manifest에 `isSimulated=true`를 기록한다. UI 통합을 위한 simulated Ready/Export는 허용하지만 실제 Ready, 출시 또는 벤치마크 근거로 보고하지 않는다.
 - **DoD**: Fake 모드에서 프로젝트 생성 → generate → SSE 진행 → 문서 4종 조회 → export ZIP 다운로드까지 curl로 전 구간 성공
 
 ### B4. MAF 워크플로 + IChatClient 어댑터
 
 - TRD §4.1의 에이전트 역할과 §4.2 상태 그래프를 Microsoft Agent Framework로 구현
 - Copilot SDK → `IChatClient` 어댑터 (`Ajure.Infrastructure`), 도구 허용 목록 제한 (TRD §5.2)
+- Reviewer 역할을 구성된 모델 풀에 결정적으로 배정하고 서로 다른 모델 ID 2개 이상의 독립 세션을 사용
 - Spec Architect와 Reviewer 세션 분리, Copilot SDK 필수 단계 실패 시 Job 명시적 실패 (FR-016)
 - **DoD**: 실제 모델로 아이디어 1건 입력 → ProjectSpec 초안 생성, 어댑터 계약 테스트 통과
 
@@ -74,6 +78,7 @@ TRD §5.4 그대로 수행한다. **이 게이트를 통과하기 전에는 B4 �
 
 - 결정적 검사: 추적성, ID, 링크, 필수 섹션, 금지 패턴 (TRD §8.1)
 - 독립 평가 + 점수 산식 + Hard Gate (EVALUATION §3~§4)
+- Finding 정규화/fingerprint/결정적 집계, HG-14, 타이브레이크 1회 제한
 - 회귀: 기준선 스냅샷, 의미 매핑, 삭제/약화 탐지 (EVALUATION §7)
 - Repair 루프 최대 3회 (FR-008)
 - **DoD**: `Ajure.Validation.Tests` 통과 — 점수 산식, 게이트, 회귀 감지 케이스
@@ -90,12 +95,15 @@ TRD §5.4 그대로 수행한다. **이 게이트를 통과하기 전에는 B4 �
   - `.cursor/rules/ajure.mdc`처럼 경로가 있는 파일은 ZIP 내부에 디렉터리 그대로 배치
   - 평가 리포트는 옵션 체크 시에만 포함
   - 파일별 SHA-256 해시를 버전 레코드에 저장
+  - Export manifest에 평가 모델 ID와 `isSimulated`를 기록
 - **DoD**: 통합 테스트 — 다중 대상(예: Claude+Cursor) 선택 시 ZIP 내부 경로/해시 검증 통과
 
-### B7. Azure 배포
+### B7. Azure 호스팅 게이트 및 배포 (유예)
 
+- 현재 백엔드 B0~B6 구현 범위에 포함하지 않으며 수행 전에는 통과로 표시하지 않음
+- TRD §5.5의 Copilot SDK Azure 호스팅, GitHub App installation token, 동시성/메모리/정책 검증
 - `azd init` → `azure.yaml`, Container Apps + Storage + Key Vault + App Insights (TRD §14)
-- Copilot SDK 토큰은 Key Vault에서 런타임 주입
+- Copilot SDK 자격증명은 Key Vault 기반으로 runtime에 주입
 - **DoD**: `azd up` 성공, 배포된 URL에서 Fake 모드 E2E 1회 + 실제 모델 E2E 1회 성공
 
 ## 4. API 계약 관리
@@ -108,8 +116,12 @@ TRD §5.4 그대로 수행한다. **이 게이트를 통과하기 전에는 B4 �
 
 ```bash
 dotnet run --project src/Ajure.AppHost        # 전체 (Azurite 포함)
-AJURE_FAKE_MODEL=true dotnet run --project src/Ajure.AppHost   # 모델 없이
 dotnet test                                    # 전체 테스트
+```
+
+```powershell
+$env:AJURE_FAKE_MODEL="true"
+dotnet run --project src/Ajure.AppHost          # 모델 없이
 ```
 
 ## 6. 검증 의무
@@ -124,15 +136,18 @@ dotnet test                                    # 전체 테스트
 
 - Copilot SDK 실패를 다른 제공자로 조용히 대체 (FR-016 위반)
 - 모델 세션에 파일 쓰기/셸/Git 도구 노출 (TD-003 위반)
+- 로컬 Docker/컨테이너 런타임 또는 `RunAsEmulator()` 사용
+- B7 수행 전에 Azure 배포나 호스팅 검증을 통과했다고 보고
+- Fake 모드 결과를 실제 Ready 근거로 보고
 - 프론트(`src/Ajure.Web`) 파일 수정 — 필요하면 프론트 담당자에게 요청
 - 계약(TRD §9) 무단 변경
 
 ## 8. 완료 정의
 
-- [ ] B0~B7 전체 DoD 통과
-- [ ] AC-001~AC-021 중 백엔드 책임 항목 검증 가능
-- [ ] `azd up`으로 재현 가능한 배포
+- [ ] B0~B6 전체 DoD 통과
+- [ ] AC-001~AC-022 중 백엔드 책임 항목 검증 가능
+- [ ] B7은 별도 Azure 호스팅/배포 게이트로 남아 있으며 미수행 상태가 명확함
 
 ## 9. 스파이크 기록 (B1 수행 후 작성)
 
-> 미수행. B1 완료 시 결과(인증 방식, 동시성 한계, 라이선스 확인, 결정)를 여기에 기록한다.
+> 미수행. B1 완료 시 결과(로컬 인증 방식, 사용 가능 모델, 세션 격리, 도구 차단, 취소/정리)를 기록한다. Azure 호스팅, 라이선스, 비용/쿼터는 B7에서 별도로 기록한다.
