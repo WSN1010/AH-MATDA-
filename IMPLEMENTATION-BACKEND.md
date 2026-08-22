@@ -150,4 +150,13 @@ dotnet run --project src/Ajure.AppHost          # 모델 없이
 
 ## 9. 스파이크 기록 (B1 수행 후 작성)
 
-> 미수행. B1 완료 시 결과(로컬 인증 방식, 사용 가능 모델, 세션 격리, 도구 차단, 취소/정리)를 기록한다. Azure 호스팅, 라이선스, 비용/쿼터는 B7에서 별도로 기록한다.
+2026-08-22 개발 호스트에서 `GitHub.Copilot.SDK 1.0.9`와
+`Microsoft.Agents.AI.GitHub.Copilot 1.18.0`으로 B1을 수행했다.
+
+- SDK 번들 runtime을 `CopilotClientMode.Empty`로 시작했고 로그인된 로컬 사용자 자격증명을 비대화형으로 사용했다.
+- `ListModelsAsync`는 `claude-opus-5`, `gpt-5.6-sol`을 포함한 서로 다른 모델 ID 30개를 반환했다.
+- 구성 모델 풀의 `claude-opus-5`와 `gpt-5.6-sol`에 독립 세션을 동시에 만들었고 두 세션 모두 `AJURE_PROBE_OK`를 반환했다.
+- 두 세션 ID는 서로 달랐고 `AvailableTools=[]`, 사용자 도구 없음, 모든 권한 요청 거부 상태에서 도구 실행 이벤트는 0건이었다.
+- 이미 취소된 토큰은 `OperationCanceledException`, 1ms 제한 시간은 `TimeoutException`으로 관찰됐고 실행 중 요청을 중단했다.
+- 모든 probe 세션을 dispose한 뒤 `DeleteSessionAsync`로 영구 삭제했으며 client도 정상 종료했다.
+- 로컬 B1은 Docker를 사용하지 않았다. Azure 호스팅, GitHub App installation token, 라이선스, 비용/쿼터 검증은 B7 미수행 상태다.
