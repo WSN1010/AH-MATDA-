@@ -71,6 +71,12 @@
 - [EVALUATION.md](EVALUATION.md): 품질 점수와 회귀 검증 규격
 - [UX-SPEC.md](UX-SPEC.md): 웹 앱 정보 구조와 화면 설계
 
+### 구현 문서
+
+- [AGENTS.md](AGENTS.md): 이 저장소에서 작업하는 코딩 에이전트의 구현 규칙
+- [IMPLEMENTATION-BACKEND.md](IMPLEMENTATION-BACKEND.md): 백엔드 담당 구현 가이드
+- [IMPLEMENTATION-FRONTEND.md](IMPLEMENTATION-FRONTEND.md): 프론트엔드 담당 구현 가이드
+
 ## 현재 상태
 
-현재 저장소는 **기획/설계 단계**다. 애플리케이션 코드는 아직 구현하지 않는다.
+기획이 확정되어 **구현 단계**에 진입했다. 2인(프론트/백) 분담과 규칙은 구현 문서를 따른다.
