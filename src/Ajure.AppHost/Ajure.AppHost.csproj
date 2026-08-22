@@ -1,0 +1,17 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.5.2">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ajure.Api\Ajure.Api.csproj" />
+    <ProjectReference Include="..\Ajure.Worker\Ajure.Worker.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AspireUseCliBundle>true</AspireUseCliBundle>
+    <UserSecretsId>28bbf1f2-026c-4188-a4b9-f60f241c7dbe</UserSecretsId>
+  </PropertyGroup>
+
+</Project>

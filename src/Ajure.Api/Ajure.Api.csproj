@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ajure.Infrastructure\Ajure.Infrastructure.csproj" />
+    <ProjectReference Include="..\Ajure.Specification\Ajure.Specification.csproj" />
+    <ProjectReference Include="..\Ajure.Validation\Ajure.Validation.csproj" />
+    <ProjectReference Include="..\Ajure.ServiceDefaults\Ajure.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>
