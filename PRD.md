@@ -35,6 +35,9 @@
 ### FR-3 Document Pipeline
 - IDEATION 생성 후, 같은 컨텍스트로 PRD 생성, 이후 TRD 생성 순서를 보장한다.
 - 각 문서는 섹션 템플릿을 준수한다.
+- 선택 모델별 전용 파일을 추가 생성한다.
+  - Claude: `CLAUDE.md`
+  - Copilot: `AGENTS.md`
 
 ### FR-4 Versioning
 - 생성 시각, 모델명, 프롬프트 버전, 입력 요약을 메타데이터로 저장한다.
@@ -62,6 +65,8 @@
 2. 모델명을 바꾸면 문서 톤/구조 차이가 확인된다.
 3. 생성 이력에서 이전 결과를 다시 열람할 수 있다.
 4. PRD/TRD는 지정 템플릿 섹션을 누락 없이 포함한다.
+5. Claude 선택 시 `CLAUDE.md`가 생성된다.
+6. Copilot 선택 시 `AGENTS.md`가 생성된다.
 
 ## 10. Release Plan (MVP)
 - v0.1: 단일 모델 + 3문서 생성 + 저장

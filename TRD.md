@@ -30,7 +30,10 @@
 3. IDEATION 생성 -> 결과 저장.
 4. IDEATION 컨텍스트로 PRD 생성 -> 저장.
 5. PRD/IDEATION 컨텍스트로 TRD 생성 -> 저장.
-6. 완료 이벤트와 비교 요약을 반환한다.
+6. 선택 모델 분기 규칙에 따라 모델 전용 문서를 생성한다.
+   - Claude 선택: `CLAUDE.md`
+   - Copilot 선택: `AGENTS.md`
+7. 완료 이벤트와 비교 요약을 반환한다.
 
 ## 3. Suggested Repository Structure
 ```text
@@ -55,6 +58,7 @@ docs/
   - `IdeaInput`
   - `SelectedModels[]`
   - `TemplateVersion`
+  - `ModelSpecificDocRules` (예: Claude -> CLAUDE.md, Copilot -> AGENTS.md)
 
 ### 4.2 AI Client Contract
 - `IChatClient` 기반 메서드:
