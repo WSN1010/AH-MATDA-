@@ -1,7 +1,7 @@
-# PRD - MATDA-TONE Document Automation Agent
+# PRD - 아주르 Document Automation Agent
 
 ## 1. Product Overview
-MATDA-TONE은 사용자의 아이디어 입력을 바탕으로, 선택한 AI 모델 특성을 반영한 **IDEATION.md, PRD.md, TRD.md**를 자동 생성하는 에이전트다.
+아주르는 사용자의 아이디어 입력을 바탕으로, 선택한 AI 모델 특성을 반영한 **IDEATION.md, PRD.md, TRD.md**를 자동 생성하는 에이전트다.
 
 ## 2. Goals
 - 문서 초안 작성 시간을 수동 대비 80% 단축
@@ -41,6 +41,10 @@ MATDA-TONE은 사용자의 아이디어 입력을 바탕으로, 선택한 AI 모
 
 ### FR-5 Comparison View
 - 같은 입력 기준으로 모델별 문서 차이를 요약한다(강점/약점/권장안).
+
+### FR-6 Mandatory Technical Constraints
+- 에이전트 오케스트레이션은 **Microsoft Agent Framework를 필수 사용**한다.
+- Azure 배포는 **.NET Aspire 기반 배포 경로를 필수 사용**한다.
 
 ## 7. Non-Functional Requirements
 - 응답성: 단일 모델 3문서 생성 120초 이내(목표)

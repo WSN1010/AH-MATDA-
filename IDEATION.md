@@ -1,4 +1,4 @@
-# MATDA-TONE Agent Ideation
+# 아주르 Agent Ideation
 
 ## 1. Problem
 대회 준비 단계에서 아이디어를 문서화할 때, 모델별 실험 흔적이 흩어지고 PRD/TRD 품질 편차가 커져 반복 작업이 많아진다.
@@ -40,10 +40,9 @@
 - Azure OpenAI/다른 모델 공급자 A/B 생성 비교 리포트
 
 ## 6. Competition Alignment
-- **Microsoft Agent Framework**: 멀티스텝 문서 생성 워크플로 오케스트레이션
+- **Microsoft Agent Framework (필수)**: 멀티스텝 문서 생성 워크플로 오케스트레이션
 - **Copilot SDK + IChatClient**: 모델 호출 인터페이스 표준화
-- **Aspire**: 로컬 개발/관측성(AppHost) 구성 단순화
-- **Azure 배포**: Container Apps + Azure AI 서비스 기반 운영
+- **Aspire 기반 Azure 배포(필수)**: .NET Aspire AppHost로 로컬/클라우드 구성을 동일하게 관리하고 Azure에 배포
 
 ## 7. Risks & Mitigations
 - 환각/부정확성: 템플릿 기반 구조화 + 검증 체크리스트 삽입

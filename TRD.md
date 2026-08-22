@@ -1,11 +1,10 @@
-# TRD - MATDA-TONE Document Automation Agent
+# TRD - 아주르 Document Automation Agent
 
 ## 1. Technical Scope
-본 문서는 MATDA-TONE 에이전트의 기술 구조를 정의한다. 요구 조건:
+본 문서는 아주르 에이전트의 기술 구조를 정의한다. 요구 조건:
 
-- Microsoft Agent Framework 사용
-- Azure 배포
-- Aspire 사용 권장
+- Microsoft Agent Framework 필수 사용
+- Aspire를 활용한 Azure 배포 필수
 - Copilot SDK 사용
 - IChatClient 사용 권장
 
@@ -37,12 +36,12 @@
 ```text
 src/
   AppHost/                     # .NET Aspire AppHost
-  MatdaTone.Api/               # Minimal API or ASP.NET Core API
-  MatdaTone.Agent/             # Microsoft Agent Framework orchestration
-  MatdaTone.AI/                # Copilot SDK + IChatClient adapters
-  MatdaTone.Domain/            # DTOs, entities, interfaces
-  MatdaTone.Infrastructure/    # Blob/DB/telemetry implementations
-  MatdaTone.Worker/            # Background generation worker (optional)
+  Ajure.Api/                   # Minimal API or ASP.NET Core API
+  Ajure.Agent/                 # Microsoft Agent Framework orchestration
+  Ajure.AI/                    # Copilot SDK + IChatClient adapters
+  Ajure.Domain/                # DTOs, entities, interfaces
+  Ajure.Infrastructure/        # Blob/DB/telemetry implementations
+  Ajure.Worker/                # Background generation worker (optional)
 docs/
   IDEATION.md
   PRD.md
@@ -79,11 +78,12 @@ docs/
 - Application Insights
 
 ### 5.2 Deployment Path
-1. Aspire 로컬 실행으로 서비스 구성 확인
-2. Container image build/push
-3. Azure Container Apps 배포
-4. 환경변수/시크릿(Key Vault 참조) 설정
-5. 헬스체크/로그 검증
+1. Aspire AppHost 로컬 실행으로 서비스 구성 확인
+2. Aspire 배포 설정(환경/리소스) 확정
+3. Container image build/push
+4. Azure Container Apps 배포
+5. 환경변수/시크릿(Key Vault 참조) 설정
+6. 헬스체크/로그 검증
 
 ## 6. Reliability & Error Handling
 - 단계별 실패를 명시적으로 기록하고 job 상태를 `FailedStep`으로 노출
