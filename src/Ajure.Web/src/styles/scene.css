@@ -1,0 +1,362 @@
+/*
+ * 랜딩 시그니처: 서로 다른 깊이의 문서 카드가 정렬되고, 요구사항 추적선이
+ * 빛을 따라 이동해 하나의 구현 번들로 잠기는 장면. (UX-SPEC §2 시그니처 표현)
+ * CSS만 사용한다. WebGL도, 지속적인 카메라 이동도 쓰지 않는다.
+ */
+
+.scene {
+  perspective: 1400px;
+  perspective-origin: 50% 22%;
+}
+
+.scene__stage {
+  position: relative;
+  display: grid;
+  gap: var(--s4);
+  padding: var(--s5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgb(var(--azure-rgb) / 0.09), transparent 62%),
+    var(--surface);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+  transform-style: preserve-3d;
+}
+
+/* 검증 루프가 문서를 훑고 지나가는 빛 */
+.scene__beam {
+  position: absolute;
+  inset-inline: -6%;
+  inset-block-start: 0;
+  block-size: 34%;
+  background: linear-gradient(180deg, transparent, rgb(var(--azure-rgb) / 0.22), transparent);
+  filter: blur(10px);
+  pointer-events: none;
+  animation: sceneSweep 7s var(--ease) infinite;
+}
+
+@keyframes sceneSweep {
+  0% {
+    translate: 0 -110%;
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 0.85;
+  }
+  100% {
+    translate: 0 320%;
+    opacity: 0;
+  }
+}
+
+/* --- 아이디어 메모 --------------------------------------------------- */
+
+.scene__memo {
+  display: grid;
+  gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  rotate: -0.5deg;
+}
+
+.scene__memoLabel {
+  font-size: var(--fs-micro);
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.scene__memoText {
+  font-size: var(--fs-sub);
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* --- 검증 루프 구분선 ------------------------------------------------ */
+
+.scene__loop {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.scene__loopLine {
+  flex: 1 1 auto;
+  block-size: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+}
+
+.scene__loopLabel {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  color: var(--azure);
+  white-space: nowrap;
+}
+
+/* --- 서로 다른 깊이의 문서 카드 -------------------------------------- */
+
+.scene__docs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s2);
+  transform-style: preserve-3d;
+}
+
+.scene__doc {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  min-block-size: 88px;
+  padding: var(--s3) 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  transform: translateY(calc(var(--lift, 0px) * -1)) translateZ(var(--z, 0px)) rotateX(9deg);
+  animation: sceneRise var(--dur-slow) var(--ease) backwards;
+}
+
+.scene__doc[data-depth='0'] {
+  --z: 0px;
+  --lift: 10px;
+  animation-delay: 60ms;
+}
+
+.scene__doc[data-depth='1'] {
+  --z: 14px;
+  --lift: 4px;
+  animation-delay: 150ms;
+}
+
+.scene__doc[data-depth='2'] {
+  --z: 28px;
+  --lift: 0px;
+  animation-delay: 240ms;
+}
+
+.scene__doc[data-depth='3'] {
+  --z: 42px;
+  --lift: 6px;
+  animation-delay: 330ms;
+  border-color: var(--tone-busy-line);
+}
+
+@keyframes sceneRise {
+  from {
+    opacity: 0;
+    transform: translateY(16px) translateZ(0) rotateX(22deg);
+  }
+}
+
+/* 문서를 암시하는 얇은 기준선 */
+.scene__docRules {
+  display: block;
+  block-size: 14px;
+  background-image: repeating-linear-gradient(
+    180deg,
+    rgb(var(--muted-rgb) / 0.42) 0 1px,
+    transparent 1px 5px
+  );
+}
+
+.scene__docName {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--azure-strong);
+  overflow-wrap: anywhere;
+}
+
+.scene__docMeta {
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* --- 추적선 FR → AC → TD --------------------------------------------- */
+
+.scene__trace {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding-block-start: var(--s2);
+  font-size: var(--fs-micro);
+}
+
+.scene__node {
+  padding: 0.2em 0.55em;
+  border: 1px solid var(--tone-busy-line);
+  border-radius: 4px;
+  background: var(--tone-busy-bg);
+  color: var(--azure);
+  white-space: nowrap;
+}
+
+.scene__link {
+  position: relative;
+  flex: 0 1 40px;
+  block-size: 1px;
+  background: var(--tone-busy-line);
+  overflow: hidden;
+}
+
+/* 연결선을 따라 이동하는 빛 */
+.scene__link::after {
+  content: '';
+  position: absolute;
+  inset-block: -1px;
+  inline-size: 40%;
+  border-radius: 999px;
+  background: var(--azure);
+  animation: sceneTravel 2.6s var(--ease) infinite;
+}
+
+.scene__link:last-of-type::after {
+  animation-delay: 0.45s;
+}
+
+@keyframes sceneTravel {
+  0% {
+    translate: -120% 0;
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    translate: 320% 0;
+    opacity: 0;
+  }
+}
+
+/* --- 하나로 모이는 선 ------------------------------------------------ */
+
+.scene__converge {
+  inline-size: 100%;
+  block-size: 34px;
+  margin-block: calc(var(--s3) * -1) calc(var(--s3) * -1);
+  overflow: visible;
+}
+
+.scene__converge path {
+  fill: none;
+  stroke: var(--azure);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.55;
+  stroke-dasharray: 6 10;
+  animation: sceneFlow 2.4s linear infinite;
+}
+
+.scene__converge path:nth-child(2) {
+  animation-delay: 0.3s;
+}
+
+.scene__converge path:nth-child(3) {
+  animation-delay: 0.6s;
+}
+
+.scene__converge path:nth-child(4) {
+  animation-delay: 0.9s;
+}
+
+@keyframes sceneFlow {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+
+/* --- 잠긴 구현 번들 --------------------------------------------------- */
+
+.scene__bundle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 2px var(--s3);
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--tone-pass-line);
+  border-radius: var(--r-sm);
+  background: var(--tone-pass-bg);
+  box-shadow: 0 0 0 4px rgb(var(--green-rgb) / 0.07);
+}
+
+.scene__lock {
+  grid-row: span 2;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--green);
+}
+
+.scene__bundleName {
+  font-size: var(--fs-sub);
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.scene__bundleMeta {
+  font-size: var(--fs-micro);
+  color: var(--muted);
+}
+
+/* --- 좁은 화면 -------------------------------------------------------- */
+
+@media (max-width: 519px) {
+  .scene {
+    perspective: 900px;
+  }
+
+  .scene__stage {
+    padding: var(--s4);
+  }
+
+  .scene__docs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .scene__doc {
+    min-block-size: 0;
+    transform: none;
+  }
+
+  .scene__converge {
+    display: none;
+  }
+}
+
+/* --- 애니메이션 감소: 깊이 이동과 빛 이동을 제거한다 ------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  .scene {
+    perspective: none;
+  }
+
+  .scene__beam {
+    display: none;
+  }
+
+  .scene__doc {
+    transform: none;
+    animation: none;
+  }
+
+  .scene__link::after {
+    animation: none;
+    inline-size: 100%;
+    opacity: 0.6;
+  }
+
+  .scene__converge path {
+    animation: none;
+    stroke-dasharray: none;
+  }
+}

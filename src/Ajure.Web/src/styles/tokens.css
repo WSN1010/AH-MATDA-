@@ -1,0 +1,132 @@
+/*
+ * 아주르 디자인 토큰.
+ * 값의 유일한 기준은 UX-SPEC.md §2 "확정 디자인 기준선"이다.
+ * 여기서 새 색이나 새 폰트를 임의로 만들지 않는다.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* --- 색상 (UX-SPEC §2 색상 토큰 표) ------------------------------- */
+  --canvas-rgb: 244 246 243;
+  --surface-rgb: 255 255 255;
+  --ink-rgb: 23 35 55;
+  --muted-rgb: 102 112 133;
+  --azure-rgb: 20 108 148;
+  --azure-strong-rgb: 11 60 93;
+  --amber-rgb: 181 71 8;
+  --green-rgb: 22 121 74;
+  --red-rgb: 180 35 24;
+  --border-rgb: 216 222 229;
+
+  --canvas: rgb(var(--canvas-rgb));
+  --surface: rgb(var(--surface-rgb));
+  --surface-2: #fbfcfc;
+  --ink: rgb(var(--ink-rgb));
+  --muted: rgb(var(--muted-rgb));
+  --azure: rgb(var(--azure-rgb));
+  --azure-strong: rgb(var(--azure-strong-rgb));
+  --amber: rgb(var(--amber-rgb));
+  --green: rgb(var(--green-rgb));
+  --red: rgb(var(--red-rgb));
+  --border: rgb(var(--border-rgb));
+
+  /* 주요 행동 위에 올라가는 글자색 */
+  --on-azure: #ffffff;
+
+  /* 상태 톤: 색은 보조 신호일 뿐이라 글리프·텍스트와 함께만 쓴다 */
+  --tone-neutral: var(--muted);
+  --tone-neutral-bg: rgb(var(--muted-rgb) / 0.1);
+  --tone-neutral-line: rgb(var(--muted-rgb) / 0.32);
+
+  --tone-busy: var(--azure);
+  --tone-busy-bg: rgb(var(--azure-rgb) / 0.1);
+  --tone-busy-line: rgb(var(--azure-rgb) / 0.34);
+
+  --tone-warn: var(--amber);
+  --tone-warn-bg: rgb(var(--amber-rgb) / 0.1);
+  --tone-warn-line: rgb(var(--amber-rgb) / 0.34);
+
+  --tone-pass: var(--green);
+  --tone-pass-bg: rgb(var(--green-rgb) / 0.1);
+  --tone-pass-line: rgb(var(--green-rgb) / 0.34);
+
+  --tone-fail: var(--red);
+  --tone-fail-bg: rgb(var(--red-rgb) / 0.1);
+  --tone-fail-line: rgb(var(--red-rgb) / 0.34);
+
+  /* --- 타이포그래피 (UX-SPEC §2) ----------------------------------- */
+  --font-sans: 'Pretendard Variable', Pretendard, 'Noto Sans KR', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', 'Malgun Gothic', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'D2Coding', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --fs-hero: clamp(2rem, 1.35rem + 2.9vw, 2.875rem); /* 32 → 46px */
+  --fs-doc: clamp(1.5rem, 1.28rem + 0.98vw, 2rem); /* 24 → 32px */
+  --fs-h2: clamp(1.375rem, 1.24rem + 0.6vw, 1.75rem);
+  --fs-h3: 1.125rem;
+  --fs-body: 1rem; /* 본문 최소 16px */
+  --fs-sub: 0.875rem; /* 보조 최소 14px */
+  --fs-micro: 0.8125rem; /* 모노 라벨 전용 */
+
+  --lh-tight: 1.22;
+  --lh-body: 1.65;
+  --lh-doc: 1.78;
+
+  /* --- 간격 --------------------------------------------------------- */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+  --s8: 72px;
+
+  --gutter: clamp(16px, 3.5vw, 40px);
+
+  /* 문서 영역은 여유 있게, 검사 패널은 콤팩트하게 (균형형 밀도) */
+  --shell-max: 1320px;
+  --page-max: 1120px;
+  --narrow-max: 760px;
+  --measure: 72ch;
+  --nav-w: 240px;
+  --inspector-w: 360px;
+
+  /* --- 형태 --------------------------------------------------------- */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --hit: 44px; /* 최소 터치 영역 */
+
+  --shadow-1: 0 1px 2px rgb(var(--azure-strong-rgb) / 0.07);
+  --shadow-2: 0 1px 2px rgb(var(--azure-strong-rgb) / 0.06), 0 10px 24px -14px rgb(var(--azure-strong-rgb) / 0.4);
+  --shadow-3: 0 2px 6px rgb(var(--azure-strong-rgb) / 0.1), 0 28px 56px -24px rgb(var(--azure-strong-rgb) / 0.45);
+
+  /* --- 모션: 랜딩과 주요 상태 전환에만 쓴다 -------------------------- */
+  --dur-fast: 120ms;
+  --dur: 220ms;
+  --dur-slow: 640ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas-rgb: 8 17 29;
+    --surface-rgb: 16 28 42;
+    --ink-rgb: 232 238 246;
+    --muted-rgb: 152 168 186;
+    --azure-rgb: 84 183 227;
+    --azure-strong-rgb: 185 229 248;
+    --amber-rgb: 245 182 91;
+    --green-rgb: 86 201 146;
+    --red-rgb: 255 138 128;
+    --border-rgb: 42 58 77;
+
+    --surface-2: #0c1725;
+    --on-azure: #04121c;
+
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5);
+    --shadow-2: 0 1px 2px rgb(0 0 0 / 0.45), 0 12px 28px -16px rgb(0 0 0 / 0.85);
+    --shadow-3: 0 2px 8px rgb(0 0 0 / 0.5), 0 32px 60px -24px rgb(0 0 0 / 0.9);
+  }
+}
