@@ -23,13 +23,19 @@ builder.Services.AddProblemDetails(options =>
     };
 });
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+builder.Services.AddCors();
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-builder.Services.AddAjureStorage(builder.Configuration);
+builder.AddAjureStorage();
 
 var app = builder.Build();
 
 app.UseExceptionHandler();
+if (app.Environment.IsDevelopment())
+{
+    app.UseCors(policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+}
+
 app.MapDefaultEndpoints();
 app.MapGet("/", () => Results.Ok(new { service = "Ajure.Api", status = "ok" }));
 
@@ -42,7 +48,8 @@ api.MapPost("/projects", async (
     CancellationToken cancellationToken) =>
 {
     var name = request.Name?.Trim();
-    var idea = request.Idea?.Trim();
+    var idea = ApiResponseMapper.ParseIdea(request.Idea);
+    var storedIdea = ApiResponseMapper.SerializeIdea(idea);
     if (string.IsNullOrWhiteSpace(name) || name.Length > 120)
     {
         return ApiProblems.Validation(
@@ -51,7 +58,7 @@ api.MapPost("/projects", async (
             "Project name must contain 1 to 120 characters.");
     }
 
-    if (string.IsNullOrWhiteSpace(idea) || idea.Length > 20_000)
+    if (string.IsNullOrWhiteSpace(idea.Summary) || storedIdea.Length > 20_000)
     {
         return ApiProblems.Validation(
             context,
@@ -68,19 +75,56 @@ api.MapPost("/projects", async (
             "Project locale must contain at most 35 characters.");
     }
 
+    var targets = NormalizeTargets(request.TargetIds);
+    if (targets is null)
+    {
+        return ApiProblems.Validation(
+            context,
+            "invalid_target",
+            "One or more target IDs are not supported.");
+    }
+
+    var now = DateTimeOffset.UtcNow;
     var project = new ProjectRecord(
         Guid.NewGuid(),
         name,
         "local",
         locale,
-        idea,
-        DateTimeOffset.UtcNow);
+        storedIdea,
+        now);
     await store.CreateProjectAsync(project, cancellationToken).ConfigureAwait(false);
-    return Results.Created($"/api/projects/{project.Id}", project);
+    var hashInput = $"{storedIdea}\nbalanced\n{string.Join(',', targets)}";
+    var version = new SpecVersionRecord(
+        Guid.NewGuid(),
+        project.Id,
+        Number: 1,
+        SpecVersionStatus.Draft,
+        BaseVersionId: null,
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(hashInput))).ToLowerInvariant(),
+        GenerationProfile: "balanced",
+        targets,
+        IsSimulated: false,
+        SpecBlobName: null,
+        SpecHash: null,
+        now,
+        ApprovedAt: null);
+    await store.SaveVersionAsync(version, cancellationToken).ConfigureAwait(false);
+    var response = await ApiResponseMapper.ProjectAsync(project, store, cancellationToken).ConfigureAwait(false);
+    return Results.Created($"/api/projects/{project.Id}", response);
 });
 
-api.MapGet("/projects", (AjureStore store, CancellationToken cancellationToken) =>
-    store.ListProjectsAsync(cancellationToken));
+api.MapGet("/projects", async (AjureStore store, CancellationToken cancellationToken) =>
+{
+    var projects = await store.ListProjectsAsync(cancellationToken).ConfigureAwait(false);
+    var responses = new List<ProjectSummaryResponse>(projects.Count);
+    foreach (var project in projects)
+    {
+        var response = await ApiResponseMapper.ProjectAsync(project, store, cancellationToken).ConfigureAwait(false);
+        responses.Add(ApiResponseMapper.Summary(response));
+    }
+
+    return Results.Ok(responses.OrderByDescending(static project => project.UpdatedAt));
+});
 
 api.MapGet("/projects/{projectId:guid}", async (
     Guid projectId,
@@ -94,8 +138,7 @@ api.MapGet("/projects/{projectId:guid}", async (
         return ApiProblems.NotFound(context, "project_not_found", "The project was not found.");
     }
 
-    var versions = await store.ListVersionsAsync(projectId, cancellationToken).ConfigureAwait(false);
-    return Results.Ok(new { project, versions });
+    return Results.Ok(await ApiResponseMapper.ProjectAsync(project, store, cancellationToken).ConfigureAwait(false));
 });
 
 api.MapPost("/projects/{projectId:guid}/analyze", async (
@@ -130,7 +173,8 @@ api.MapGet("/projects/{projectId:guid}/decisions", async (
         return ApiProblems.NotFound(context, "project_not_found", "The project was not found.");
     }
 
-    return Results.Ok(await store.ListDecisionsAsync(projectId, cancellationToken).ConfigureAwait(false));
+    var decisions = await store.ListDecisionsAsync(projectId, cancellationToken).ConfigureAwait(false);
+    return Results.Ok(decisions.Select(ApiResponseMapper.Decision));
 });
 
 api.MapPut("/projects/{projectId:guid}/decisions/{decisionId}", async (
@@ -149,7 +193,10 @@ api.MapPut("/projects/{projectId:guid}/decisions/{decisionId}", async (
         return ApiProblems.NotFound(context, "decision_not_found", "The decision was not found.");
     }
 
-    if (string.IsNullOrWhiteSpace(request.Answer) || request.Answer.Length > 2_000)
+    var answer = string.IsNullOrWhiteSpace(request.Text)
+        ? request.OptionId ?? request.Answer
+        : request.Text;
+    if (string.IsNullOrWhiteSpace(answer) || answer.Length > 2_000)
     {
         return ApiProblems.Validation(
             context,
@@ -157,9 +204,15 @@ api.MapPut("/projects/{projectId:guid}/decisions/{decisionId}", async (
             "Decision answer must contain 1 to 2,000 characters.");
     }
 
-    decision = decision with { Answer = request.Answer.Trim(), UpdatedAt = DateTimeOffset.UtcNow };
+    decision = decision with
+    {
+        Answer = answer.Trim(),
+        AnswerOptionId = request.OptionId,
+        AnswerText = string.IsNullOrWhiteSpace(request.Text) ? null : request.Text.Trim(),
+        UpdatedAt = DateTimeOffset.UtcNow
+    };
     await store.SaveDecisionAsync(decision, cancellationToken).ConfigureAwait(false);
-    return Results.Ok(decision);
+    return Results.Ok(ApiResponseMapper.Decision(decision));
 });
 
 api.MapPost("/projects/{projectId:guid}/versions", async (
@@ -273,9 +326,13 @@ api.MapGet("/jobs/{jobId:guid}", async (
     CancellationToken cancellationToken) =>
 {
     var job = await store.GetJobAsync(jobId, cancellationToken).ConfigureAwait(false);
-    return job is null
-        ? ApiProblems.NotFound(context, "job_not_found", "The job was not found.")
-        : Results.Ok(job);
+    if (job is null)
+    {
+        return ApiProblems.NotFound(context, "job_not_found", "The job was not found.");
+    }
+
+    var events = await store.ListEventsAsync(jobId, 0, cancellationToken).ConfigureAwait(false);
+    return Results.Ok(ApiResponseMapper.Job(job, events));
 });
 
 api.MapGet("/jobs/{jobId:guid}/events", SseEndpoint.StreamAsync);
@@ -291,7 +348,20 @@ api.MapGet("/spec-versions/{versionId:guid}/artifacts", async (
         return ApiProblems.NotFound(context, "version_not_found", "The specification version was not found.");
     }
 
-    return Results.Ok(await store.ListArtifactsAsync(versionId, cancellationToken).ConfigureAwait(false));
+    var version = await store.GetVersionAsync(versionId, cancellationToken).ConfigureAwait(false);
+    if (version is null)
+    {
+        return ApiProblems.NotFound(context, "version_not_found", "The specification version was not found.");
+    }
+
+    var artifacts = await store.ListArtifactsAsync(versionId, cancellationToken).ConfigureAwait(false);
+    return Results.Ok(
+        artifacts
+            .Where(static artifact =>
+                artifact.Status != ArtifactStatus.Proposed
+                && artifact.Kind is not ArtifactKind.ExportZip
+                && artifact.Kind is not ArtifactKind.ValidationReport)
+            .Select(artifact => ApiResponseMapper.Artifact(artifact, version.Number)));
 });
 
 api.MapGet("/artifacts/{artifactId:guid}", async (
@@ -312,9 +382,25 @@ api.MapGet("/artifacts/{artifactId:guid}", async (
         return ApiProblems.NotFound(context, "artifact_content_not_found", "The artifact content was not found.");
     }
 
-    return artifact.Kind == ArtifactKind.ExportZip
-        ? Results.File(content.ToArray(), artifact.ContentType, Path.GetFileName(artifact.Path))
-        : Results.Text(content.ToString(), artifact.ContentType, Encoding.UTF8);
+    if (artifact.Kind == ArtifactKind.ExportZip)
+    {
+        return Results.File(content.ToArray(), artifact.ContentType, Path.GetFileName(artifact.Path));
+    }
+
+    var version = await store.GetVersionAsync(artifact.SpecVersionId, cancellationToken).ConfigureAwait(false)
+        ?? throw new InvalidDataException("The artifact version was not found.");
+    var mapped = ApiResponseMapper.Artifact(artifact, version.Number);
+    return Results.Ok(new ArtifactContentResponse(
+        mapped.Id,
+        mapped.Kind,
+        mapped.TargetId,
+        mapped.Path,
+        mapped.Status,
+        mapped.SpecVersionNumber,
+        mapped.ContentHash,
+        mapped.UpdatedAt,
+        mapped.StaleReason,
+        content.ToString()));
 });
 
 api.MapPut("/artifacts/{artifactId:guid}", async (
@@ -346,22 +432,42 @@ api.MapPut("/artifacts/{artifactId:guid}", async (
             "Artifact content must contain 1 to 200,000 characters.");
     }
 
-    var proposedId = Guid.NewGuid();
-    var blobName = $"proposals/{artifact.SpecVersionId:N}/{proposedId:N}.md";
+    var blobName = $"proposals/{artifact.SpecVersionId:N}/{Guid.NewGuid():N}.md";
     var content = BinaryData.FromString(request.Content);
     await store.PutBlobAsync(blobName, content, "text/markdown", cancellationToken).ConfigureAwait(false);
-    var proposal = artifact with
+    var updated = artifact with
     {
-        Id = proposedId,
-        Status = ArtifactStatus.Proposed,
+        Status = ArtifactStatus.Current,
         BlobName = blobName,
         ContentHash = Convert
             .ToHexString(SHA256.HashData(content.ToArray()))
             .ToLowerInvariant(),
         CreatedAt = DateTimeOffset.UtcNow
     };
-    await store.SaveArtifactAsync(proposal, cancellationToken).ConfigureAwait(false);
-    return Results.Accepted($"/api/artifacts/{proposal.Id}", proposal);
+    await store.SaveArtifactAsync(updated, cancellationToken).ConfigureAwait(false);
+    var artifacts = await store.ListArtifactsAsync(artifact.SpecVersionId, cancellationToken).ConfigureAwait(false);
+    var affected = artifacts
+        .Where(item =>
+            item.Id != artifact.Id
+            && item.Status == ArtifactStatus.Current
+            && item.Kind is not ArtifactKind.ExportZip)
+        .ToArray();
+    foreach (var stale in affected)
+    {
+        await store.SaveArtifactAsync(stale with { Status = ArtifactStatus.Stale }, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    var version = await store.GetVersionAsync(artifact.SpecVersionId, cancellationToken).ConfigureAwait(false)
+        ?? throw new InvalidDataException("The artifact version was not found.");
+    await store.SaveVersionAsync(
+            version with { Status = SpecVersionStatus.Draft, ApprovedAt = null },
+            cancellationToken)
+        .ConfigureAwait(false);
+    return Results.Ok(new ArtifactSaveResponse(
+        ApiResponseMapper.Artifact(updated, version.Number),
+        affected.Select(static item => item.Path).ToArray(),
+        "Draft"));
 });
 
 api.MapPost("/spec-versions/{versionId:guid}/validate", async (
@@ -395,7 +501,7 @@ api.MapGet("/validation-runs/{runId:guid}", async (
     var run = await store.GetValidationRunAsync(runId, cancellationToken).ConfigureAwait(false);
     return run is null
         ? ApiProblems.NotFound(context, "validation_run_not_found", "The validation run was not found.")
-        : Results.Ok(run);
+        : Results.Ok(await ApiResponseMapper.ValidationRunAsync(run, store, cancellationToken).ConfigureAwait(false));
 });
 
 api.MapGet("/spec-versions/{versionId:guid}/diff/{baseId:guid}", async (
@@ -489,19 +595,61 @@ api.MapPost("/spec-versions/{versionId:guid}/export", async (
             "Only a Ready specification version can be exported.");
     }
 
-    return await QueueJobAsync(
-        JobKind.Export,
-        version.ProjectId,
-        version.Id,
-        version.BaseVersionId,
-        context,
-        store,
-        cancellationToken).ConfigureAwait(false);
+    var job = await EnqueueJobAsync(
+            JobKind.Export,
+            version.ProjectId,
+            version.Id,
+            version.BaseVersionId,
+            context,
+            store,
+            cancellationToken)
+        .ConfigureAwait(false);
+    if (!context.Request.Headers.Accept.Any(static value =>
+            value?.Contains("application/zip", StringComparison.OrdinalIgnoreCase) == true))
+    {
+        return Results.Accepted($"/api/jobs/{job.Id}", new JobAcceptedResponse(job.Id));
+    }
+
+    var completed = await WaitForJobAsync(job.Id, store, cancellationToken).ConfigureAwait(false);
+    if (completed.Status != JobStatus.Succeeded || completed.OutputArtifactId is not { } artifactId)
+    {
+        return ApiProblems.Conflict(
+            context,
+            completed.ErrorCode ?? "export_failed",
+            completed.ErrorMessage ?? "The ZIP export did not complete.");
+    }
+
+    var artifact = await store.GetArtifactAsync(artifactId, cancellationToken).ConfigureAwait(false)
+        ?? throw new InvalidDataException("The export artifact was not found.");
+    var content = await store.GetBlobAsync(artifact.BlobName, cancellationToken).ConfigureAwait(false)
+        ?? throw new InvalidDataException("The export content was not found.");
+    return Results.File(content.ToArray(), artifact.ContentType, Path.GetFileName(artifact.Path));
 });
 
 app.Run();
 
 static async Task<IResult> QueueJobAsync(
+    JobKind kind,
+    Guid projectId,
+    Guid? specVersionId,
+    Guid? baseVersionId,
+    HttpContext context,
+    AjureStore store,
+    CancellationToken cancellationToken)
+{
+    var job = await EnqueueJobAsync(
+            kind,
+            projectId,
+            specVersionId,
+            baseVersionId,
+            context,
+            store,
+            cancellationToken)
+        .ConfigureAwait(false);
+    return Results.Accepted($"/api/jobs/{job.Id}", new JobAcceptedResponse(job.Id));
+}
+
+static async Task<JobRecord> EnqueueJobAsync(
     JobKind kind,
     Guid projectId,
     Guid? specVersionId,
@@ -540,7 +688,28 @@ static async Task<IResult> QueueJobAsync(
     await store
         .EnqueueAsync(new JobMessage(job.Id, kind, projectId, specVersionId, baseVersionId), cancellationToken)
         .ConfigureAwait(false);
-    return Results.Accepted($"/api/jobs/{job.Id}", new JobAcceptedResponse(job.Id));
+    return job;
+}
+
+static async Task<JobRecord> WaitForJobAsync(
+    Guid jobId,
+    AjureStore store,
+    CancellationToken cancellationToken)
+{
+    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(5);
+    while (DateTimeOffset.UtcNow < deadline)
+    {
+        var job = await store.GetJobAsync(jobId, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidDataException("The export job was not found.");
+        if (job.Status is JobStatus.Succeeded or JobStatus.Failed)
+        {
+            return job;
+        }
+
+        await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken).ConfigureAwait(false);
+    }
+
+    throw new TimeoutException("The export job did not complete within five minutes.");
 }
 
 static string[]? NormalizeTargets(string[]? requestedTargets)

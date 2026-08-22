@@ -4,7 +4,7 @@ using System.Text.Json;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.AddServiceDefaults();
-builder.Services.AddAjureStorage(builder.Configuration);
+builder.AddAjureStorage();
 builder.Services.AddSingleton<SpecificationPipeline>();
 builder.Services.AddSingleton<JobProcessor>();
 

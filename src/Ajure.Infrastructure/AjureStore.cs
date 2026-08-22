@@ -25,14 +25,15 @@ public sealed class AjureStore
     private readonly QueueClient _queue;
     private readonly QueueClient _poisonQueue;
 
-    public AjureStore(string connectionString)
+    public AjureStore(
+        TableServiceClient tableService,
+        BlobServiceClient blobService,
+        QueueServiceClient queueService)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+        ArgumentNullException.ThrowIfNull(tableService);
+        ArgumentNullException.ThrowIfNull(blobService);
+        ArgumentNullException.ThrowIfNull(queueService);
 
-        var tableOptions = new TableClientOptions();
-        tableOptions.Retry.MaxRetries = 5;
-        tableOptions.Retry.Delay = TimeSpan.FromMilliseconds(250);
-        var tableService = new TableServiceClient(connectionString, tableOptions);
         _projects = tableService.GetTableClient("AjureProjects");
         _versions = tableService.GetTableClient("AjureVersions");
         _decisions = tableService.GetTableClient("AjureDecisions");
@@ -41,19 +42,10 @@ public sealed class AjureStore
         _artifacts = tableService.GetTableClient("AjureArtifacts");
         _runs = tableService.GetTableClient("AjureValidationRuns");
 
-        var blobOptions = new BlobClientOptions();
-        blobOptions.Retry.MaxRetries = 5;
-        blobOptions.Retry.Delay = TimeSpan.FromMilliseconds(250);
-        _content = new BlobContainerClient(connectionString, "ajure-content", blobOptions);
+        _content = blobService.GetBlobContainerClient("ajure-content");
 
-        var queueOptions = new QueueClientOptions
-        {
-            MessageEncoding = QueueMessageEncoding.Base64
-        };
-        queueOptions.Retry.MaxRetries = 5;
-        queueOptions.Retry.Delay = TimeSpan.FromMilliseconds(250);
-        _queue = new QueueClient(connectionString, "ajure-jobs", queueOptions);
-        _poisonQueue = new QueueClient(connectionString, "ajure-jobs-poison", queueOptions);
+        _queue = queueService.GetQueueClient("ajure-jobs");
+        _poisonQueue = queueService.GetQueueClient("ajure-jobs-poison");
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
@@ -148,6 +140,26 @@ public sealed class AjureStore
 
     public Task<JobRecord?> GetJobAsync(Guid jobId, CancellationToken cancellationToken) =>
         GetAsync<JobRecord>(_jobs, JobsPartition, Key(jobId), cancellationToken);
+
+    public async Task<IReadOnlyList<JobRecord>> ListJobsAsync(
+        Guid projectId,
+        CancellationToken cancellationToken)
+    {
+        // ponytail: MVP job volume is small; add a ProjectId table index if this scan becomes measurable.
+        var jobs = new List<JobRecord>();
+        await foreach (var entity in _jobs.QueryAsync<TableEntity>(
+                           static entity => entity.PartitionKey == JobsPartition,
+                           cancellationToken: cancellationToken))
+        {
+            var job = FromEntity<JobRecord>(entity);
+            if (job.ProjectId == projectId)
+            {
+                jobs.Add(job);
+            }
+        }
+
+        return jobs.OrderByDescending(static job => job.CreatedAt).ToArray();
+    }
 
     public async Task EnqueueAsync(JobMessage message, CancellationToken cancellationToken)
     {

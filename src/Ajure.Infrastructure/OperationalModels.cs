@@ -80,7 +80,9 @@ public sealed record DecisionRecord(
     DateTimeOffset UpdatedAt,
     string? Reason = null,
     IReadOnlyDictionary<string, string>? Impacts = null,
-    DecisionSeverity Severity = DecisionSeverity.Defaultable);
+    DecisionSeverity Severity = DecisionSeverity.Defaultable,
+    string? AnswerOptionId = null,
+    string? AnswerText = null);
 
 public sealed record JobRecord(
     Guid Id,

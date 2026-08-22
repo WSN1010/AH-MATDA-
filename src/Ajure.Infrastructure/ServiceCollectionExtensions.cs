@@ -1,24 +1,38 @@
 using Ajure.Agent;
+using Azure.Storage.Queues;
+using Microsoft.Extensions.Azure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Ajure.Infrastructure;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddAjureStorage(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IHostApplicationBuilder AddAjureStorage(this IHostApplicationBuilder builder)
     {
-        var connectionString = configuration.GetConnectionString("storage");
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            throw new InvalidOperationException("ConnectionStrings:storage is required.");
-        }
+        builder.AddAzureBlobServiceClient(
+            "blobs",
+            configureClientBuilder: client => client.ConfigureOptions(ConfigureRetry));
+        builder.AddAzureQueueServiceClient(
+            "queues",
+            configureClientBuilder: client => client.ConfigureOptions(options =>
+            {
+                ConfigureRetry(options);
+                options.MessageEncoding = QueueMessageEncoding.Base64;
+            }));
+        builder.AddAzureTableServiceClient(
+            "tables",
+            configureClientBuilder: client => client.ConfigureOptions(ConfigureRetry));
+        builder.Services.AddSingleton<AjureStore>();
+        builder.Services.AddHostedService<AjureStoreInitializer>();
+        return builder;
+    }
 
-        services.AddSingleton(new AjureStore(connectionString));
-        services.AddHostedService<AjureStoreInitializer>();
-        return services;
+    private static void ConfigureRetry(Azure.Core.ClientOptions options)
+    {
+        options.Retry.MaxRetries = 5;
+        options.Retry.Delay = TimeSpan.FromMilliseconds(250);
     }
 
     public static IServiceCollection AddAjureCopilot(

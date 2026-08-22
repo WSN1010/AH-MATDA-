@@ -100,7 +100,7 @@ export interface JobFailure {
 export interface JobStatus {
   jobId: string
   projectId: string
-  specVersionId: string
+  specVersionId: string | null
   status: JobState
   stages: JobStage[]
   lastSequence: number

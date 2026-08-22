@@ -117,8 +117,8 @@ export function createProject(input: {
   return request<Project>('POST', '/api/projects', input)
 }
 
-export function analyzeProject(projectId: string): Promise<{ decisionCount: number }> {
-  return request<{ decisionCount: number }>('POST', `/api/projects/${projectId}/analyze`, {})
+export function analyzeProject(projectId: string): Promise<{ jobId: string }> {
+  return request<{ jobId: string }>('POST', `/api/projects/${projectId}/analyze`, {})
 }
 
 // -------------------------------------------------------------------- 결정

@@ -55,8 +55,8 @@ export function NewProject() {
     setError(null)
     try {
       const project = await createProject({ name: name.trim(), idea, targetIds })
-      await analyzeProject(project.id)
-      navigate(`/projects/${project.id}/decisions`)
+      const job = await analyzeProject(project.id)
+      navigate(`/projects/${project.id}/run/${job.jobId}`)
     } catch (caught) {
       setError(asApiError(caught))
       setSubmitting(false)

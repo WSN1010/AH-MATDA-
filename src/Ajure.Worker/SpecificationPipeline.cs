@@ -82,7 +82,9 @@ public sealed class SpecificationPipeline(
                     "Building the simulated ProjectSpec.",
                     cancellationToken)
                 .ConfigureAwait(false);
-            spec = SimulatedSpecFactory.Create(project.Name, project.Idea);
+            spec = SimulatedSpecFactory.Create(
+                project.Name,
+                StoredProjectIdea.Parse(project.Idea).Summary);
         }
         else
         {
@@ -351,7 +353,8 @@ public sealed class SpecificationPipeline(
             CompletedAt: now)
         {
             ExecutionTraceJson = SpecJson.Serialize(traces),
-            AreaScoresJson = "{}",
+            AreaScoresJson = SpecJson.Serialize(
+                status == ReadyStatus.Ready ? MaximumScores() : ZeroScores()),
             RegressionsJson = "[]"
         };
         await store.SaveValidationRunAsync(run, cancellationToken).ConfigureAwait(false);
@@ -954,7 +957,7 @@ public sealed class SpecificationPipeline(
             {
                 project.Name,
                 project.Locale,
-                project.Idea
+                Idea = StoredProjectIdea.Parse(project.Idea)
             },
             specVersion = VersionLabel(version),
             version.GenerationProfile,
@@ -1058,6 +1061,16 @@ public sealed class SpecificationPipeline(
         TechnicalExecutability = 0m,
         TargetAgentFitness = 0m,
         UxOperationsCompleteness = 0m
+    };
+
+    private static AreaScores MaximumScores() => new()
+    {
+        IntentCoverage = AreaScores.IntentCoverageMax,
+        Traceability = AreaScores.TraceabilityMax,
+        Testability = AreaScores.TestabilityMax,
+        TechnicalExecutability = AreaScores.TechnicalExecutabilityMax,
+        TargetAgentFitness = AreaScores.TargetAgentFitnessMax,
+        UxOperationsCompleteness = AreaScores.UxOperationsCompletenessMax
     };
 
     private static ArtifactKind DocumentKind(string path) => path switch

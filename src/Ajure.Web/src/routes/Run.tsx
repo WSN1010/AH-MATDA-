@@ -121,7 +121,7 @@ export function Run() {
   )
 
   async function retry() {
-    if (!job) return
+    if (!job?.specVersionId) return
     setRetrying(true)
     setError(null)
     try {
@@ -254,7 +254,7 @@ export function Run() {
                       ? '재시도 가능한 실패입니다. 이미 끝난 단계는 다시 계산하지 않습니다.'
                       : '재시도로 해결되지 않습니다. 결정 답변을 확인하세요.'}
                   </p>
-                  {job.failure?.retryable && (
+                  {job.failure?.retryable && job.specVersionId && (
                     <button type="button" className="btn btn--primary" onClick={retry} disabled={retrying}>
                       {retrying ? '재시작 중…' : '실패 단계부터 재시도'}
                     </button>
@@ -264,12 +264,17 @@ export function Run() {
 
               {job.status === 'Succeeded' && (
                 <div className="panel panel--pass">
-                  <h2 className="panel__title">생성 완료</h2>
+                  <h2 className="panel__title">{job.specVersionId ? '생성 완료' : '분석 완료'}</h2>
                   <p className="panel__row">
-                    문서와 대상 지침 파일이 준비됐습니다. 점수와 Hard Gate는 워크벤치의 Quality Inspector에서 확인합니다.
+                    {job.specVersionId
+                      ? '문서와 대상 지침 파일이 준비됐습니다. 점수와 Hard Gate는 워크벤치의 Quality Inspector에서 확인합니다.'
+                      : '구현 결과를 바꾸는 결정을 확인할 준비가 됐습니다.'}
                   </p>
-                  <Link className="btn btn--primary" to={`/projects/${id}/workspace`}>
-                    문서 워크벤치 열기
+                  <Link
+                    className="btn btn--primary"
+                    to={job.specVersionId ? `/projects/${id}/workspace` : `/projects/${id}/decisions`}
+                  >
+                    {job.specVersionId ? '문서 워크벤치 열기' : '결정 확인하기'}
                   </Link>
                 </div>
               )}

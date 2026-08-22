@@ -28,9 +28,10 @@ public static class SseEndpoint
             var events = await store.ListEventsAsync(jobId, cursor, cancellationToken).ConfigureAwait(false);
             foreach (var jobEvent in events)
             {
+                var payload = ApiResponseMapper.Event(jobEvent);
                 await context.Response
                     .WriteAsync(
-                        $"id: {jobEvent.Sequence}\nevent: {jobEvent.EventType}\ndata: {JsonSerializer.Serialize(jobEvent, JsonDefaults.Options)}\n\n",
+                        $"id: {jobEvent.Sequence}\nevent: {payload.EventType}\ndata: {JsonSerializer.Serialize(payload, JsonDefaults.Options)}\n\n",
                         cancellationToken)
                     .ConfigureAwait(false);
                 cursor = jobEvent.Sequence;
