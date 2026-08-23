@@ -116,7 +116,7 @@ FR/NFR -> AC 연결률이 100% 미만이면 이 영역 점수와 무관하게 Ha
 | HG-10 | 아주르 산출물에 제품 구현 코드 또는 실제 비밀 포함 |
 | HG-11 | Repair 3회 후 동일 Critical Finding 반복 |
 | HG-12 | 평가자 결과가 상충하고 1회 타이브레이크 후에도 합의되지 않음 |
-| HG-13 | 필수 Copilot SDK 작성/평가 단계가 완료되지 않음 |
+| HG-13 | 필수 직접 공급자 API 작성/평가 단계가 완료되지 않음 |
 | HG-14 | 서로 다른 모델 ID의 성공한 의미 평가가 2건 미만이거나 필수 평가 봉투가 유효하지 않음 |
 
 ## 5. 검증 단계
@@ -209,7 +209,7 @@ Implementation Simulator는 코드를 생성하지 않고 다음만 만든다.
 
 ### 모델 배정
 
-1. Worker 시작 시 Copilot SDK의 사용 가능 모델과 구성 `Ajure:Review:ModelPool`의 교집합을 구성 순서대로 만든다.
+1. Worker 시작 시 환경 변수 또는 user-secrets로 구성된 OpenAI, Anthropic, Gemini 모델 목록을 만든다. `Ajure:Review:ModelPool`이 있으면 목록과의 교집합을 구성 순서대로 사용하고, 없으면 구성된 전체 모델을 사용한다.
 2. 모델이 2개 미만이면 `model_diversity_unavailable` 오류와 HG-14로 실패한다.
 3. `Product -> Technical -> UX` 고정 Reviewer 순서에 모델을 라운드 로빈으로 배정한다. Implementation Simulator는 Stage 4에서 별도 세션으로 실행하되 Reviewer 점수 집계에는 포함하지 않는다.
 4. 역할마다 독립 세션을 만들며 모델 ID와 세션 ID를 Validation Run에 저장한다.
@@ -240,7 +240,7 @@ Implementation Simulator는 코드를 생성하지 않고 다음만 만든다.
 - Confirmed이고, 사용자 결정이 필요 없으며, 검증 가능한 근거가 있는 Finding만 Repair Agent에 전달한다.
 - 입력은 심각도 내림차순, 영향 ID, fingerprint 순으로 정렬하고 수정 가능 범위를 영향 ID 합집합으로 제한한다.
 - 같은 Critical fingerprint가 3회 연속 Confirmed면 HG-11이다.
-- 성공한 서로 다른 평가 모델이 2개 미만이거나 필수 Copilot SDK 단계가 누락되면 점수와 관계없이 Ready가 아니다.
+- 성공한 서로 다른 평가 모델이 2개 미만이거나 필수 직접 공급자 API 단계가 누락되면 점수와 관계없이 Ready가 아니다.
 
 ### 안정성 검사
 

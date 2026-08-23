@@ -7,10 +7,10 @@
 ### 필수 기술 조건
 
 - Microsoft Agent Framework를 실제 작성·평가·회귀 워크플로에 사용한다.
-- GitHub Copilot SDK를 모델 세션에 사용한다.
-- 모델 호출 경계는 가능한 범위에서 `IChatClient`로 표준화한다.
-- .NET Aspire AppHost로 로컬 토폴로지와 Azure 리소스를 구성한다.
-- Aspire 기반 워크플로를 Azure Container Apps에 배포한다.
+- OpenAI GPT, Anthropic Claude, Google Gemini의 공식 HTTPS API를 직접 지원한다.
+- 모델 호출 경계는 `IChatClient`로 표준화한다.
+- 메타데이터, Job 큐, 이벤트, 산출물은 단일 SQLite 파일에 저장한다.
+- Azure 서비스와 GitHub Copilot SDK를 요구하지 않는 셀프호스트 애플리케이션으로 제공한다.
 
 ### 설계 원칙
 
@@ -26,20 +26,18 @@
 flowchart LR
     U[Web Browser] --> W[Ajure.Web]
     W --> A[Ajure.Api]
-    A --> Q[Azure Storage Queue]
-    Q --> R[Ajure.Worker]
+    A --> D[(SQLite)]
+    D --> R[Ajure.Worker]
     R --> AF[Microsoft Agent Framework Workflow]
-    AF --> C[Copilot SDK / IChatClient]
+    AF --> C[IChatClient Provider Gateway]
+    C --> O[OpenAI API]
+    C --> H[Anthropic API]
+    C --> G[Gemini API]
     AF --> V[Deterministic Validation Engine]
-    R -->|state + ordered JobEvent| T[Azure Table Storage]
-    R --> B[Azure Blob Storage]
-    A -->|query + replay JobEvent| T
-    A --> B
+    R -->|state + ordered JobEvent + artifacts| D
+    A -->|query + replay JobEvent| D
     A --> S[Server-Sent Events]
     S --> W
-    A -. secrets .-> K[Azure Key Vault]
-    A -. telemetry .-> O[Application Insights]
-    R -. telemetry .-> O
 ```
 
 ## 3. 런타임 구성요소
@@ -55,9 +53,9 @@ flowchart LR
 
 - ASP.NET Core API
 - 인증, 프로젝트/버전 조회, Job 생성, 문서 편집, 내보내기 담당
-- Table에 저장된 `JobEvent`를 Server-Sent Events(SSE)로 재생해 진행 상태 전달
-- `Last-Event-ID` 이후 이벤트를 재생하므로 새로고침과 API replica 변경 후에도 이어보기 지원
-- 모델 호출과 장시간 검증은 직접 수행하지 않고 Queue에 위임
+- SQLite에 저장된 `JobEvent`를 Server-Sent Events(SSE)로 재생해 진행 상태 전달
+- `Last-Event-ID` 이후 이벤트를 재생하므로 새로고침과 API 재시작 후에도 이어보기 지원
+- 모델 호출과 장시간 검증은 직접 수행하지 않고 SQLite Job 큐에 위임
 
 ### 3.3 `Ajure.Worker`
 
@@ -87,15 +85,17 @@ flowchart LR
 
 ### 3.7 `Ajure.Infrastructure`
 
-- Azure Blob/Queue/Table, Key Vault, OpenTelemetry 구현
-- Copilot SDK 연결과 `IChatClient` 어댑터
+- SQLite 엔터티/Blob/Job 큐와 lease 구현
+- OpenAI, Anthropic, Gemini 직접 API 연결과 `IChatClient` 어댑터
+- 서버 환경 변수 및 user-secrets 기반 공급자 설정
 - 대상 도구 템플릿 레지스트리 로더
 
 ### 3.8 `Ajure.AppHost` / `Ajure.ServiceDefaults`
 
-- Aspire 리소스, 참조, 엔드포인트, Health Check, Telemetry 기본값 선언
-- 로컬에서는 Azurite 등 개발 리소스 사용
-- Azure에서는 관리형 리소스로 치환
+- AppHost는 Web, API, Worker를 함께 시작하는 선택적 로컬 개발 실행기
+- API와 Worker에 동일한 절대 SQLite 경로 전달
+- Health Check와 OpenTelemetry 기본값 선언
+- 운영 배포는 AppHost나 특정 클라우드에 의존하지 않음
 
 ## 4. Microsoft Agent Framework 워크플로
 
@@ -140,70 +140,70 @@ Draft
 - 구현 시뮬레이터는 소스 코드를 생성하지 않고 작업 분해, 의존성, 예상 파일, 검증 항목만 구조화해 반환한다.
 - Repair Agent는 Finding이 가리키는 범위 밖의 제품 결정을 바꾸지 못한다.
 
-## 5. Copilot SDK와 `IChatClient` 사용
+## 5. 직접 모델 API와 `IChatClient` 사용
 
-### 5.1 Copilot SDK 역할
+### 5.1 공급자 레지스트리
 
-GitHub Copilot SDK의 `CopilotClient`를 프로그래밍 방식의 모델 세션으로 사용한다.
+`Ajure.Infrastructure`의 모델 게이트웨이가 구성된 공급자를 `IModelGateway`와 `IChatClient` 경계 뒤에 노출한다.
 
-- SDK에 포함된 기본 runtime을 Worker의 자식 프로세스로 실행하거나 공식적으로 지원되는 원격 연결을 사용
-- Worker replica마다 장수명 `CopilotClient` 하나를 유지하고 Job, 역할, 모델별 독립 세션을 격리 단위로 사용
-- 문서 작성 및 평가 세션 시작
-- 선택 모델 지정
-- 구조화 프롬프트 전송과 이벤트 수신
-- 세션별 작업 디렉터리/로그/Telemetry 설정
-- Azure에서는 Key Vault로 보호한 GitHub App 자격증명으로 짧은 수명의 installation token을 발급하고, SDK runtime 환경의 `COPILOT_GITHUB_TOKEN`에 주입
-- Copilot SDK는 최소 Spec Architect와 독립 Reviewer 한 단계에서 반드시 성공해야 하며, 이 단계를 건너뛴 결과는 Ready가 될 수 없음
-- 시작 시 `ListModelsAsync` 결과와 구성된 모델 풀의 교집합을 확인하고 서로 다른 모델 ID가 2개 미만이면 명시적으로 실패
+| 공급자 | API | API 키 | 모델 ID |
+|---|---|---|---|
+| OpenAI GPT | Chat Completions | `OPENAI_API_KEY` | `AJURE_OPENAI_MODEL` |
+| Anthropic Claude | Messages | `ANTHROPIC_API_KEY` | `AJURE_ANTHROPIC_MODEL` |
+| Google Gemini | `generateContent` | `GEMINI_API_KEY` | `AJURE_GEMINI_MODEL` |
 
-`CopilotClient`의 Worker replica당 수명, 세션 동시성, child process 수는 부하 테스트로 결정한다. 공식적으로 안전한 경우 장수명 client와 Job별 session을 사용하고, 그렇지 않으면 제한된 client pool로 프로세스 수를 통제한다.
+- 세 공급자를 동시에 구성할 수 있고, 키와 모델 ID가 모두 있는 공급자만 사용 가능 목록에 포함한다.
+- 내부 모델 ID는 `openai:{model}`, `anthropic:{model}`, `gemini:{model}`처럼 공급자 한정 형식으로 저장한다.
+- API 키는 서버 환경 변수 또는 .NET user-secrets에서만 읽고 애플리케이션 데이터나 Telemetry에 저장하지 않는다.
+- 공급자별 공식 HTTPS 엔드포인트와 인증 헤더를 사용한다.
+- 시작 시 구성된 모델이 2개 미만이면 실제 모델 Job을 `model_diversity_unavailable`로 실패시킨다.
+- 작성 및 Reviewer 역할마다 독립 요청 ID를 만들고 공급자, 모델 ID, 요청 ID를 실행 기록에 저장한다.
+- 선택된 공급자의 인증, 할당량, 정책 또는 API 오류를 다른 공급자의 성공으로 대체하지 않는다.
 
 ### 5.2 코드 작성 방지
 
-- `CopilotClientMode.Empty`로 실행하고 세션에 파일 쓰기, 셸, Git, 배포 도구를 제공하지 않는다.
-- `AvailableTools`를 빈 목록으로 두고 커스텀 `Tools`를 등록하지 않으며 모든 권한 요청을 거부한다.
-- Memory와 교차 세션 저장소를 비활성화하고 역할별 세션은 완료 후 삭제한다.
+- Agent Framework 에이전트에 파일 쓰기, 셸, Git, 배포 도구 또는 함수 도구를 등록하지 않는다.
+- 공급자 API에는 system/developer 지침과 사용자 프롬프트만 전송한다.
+- 공급자 대화 저장 기능을 사용하지 않고 역할별 요청은 stateless로 실행한다.
 - 출력은 Markdown 또는 구조화된 `ProjectSpec` 스키마만 허용한다.
 - 코드 펜스가 필요한 경우 API 계약/데이터 예시/디렉터리 구조로 용도를 제한한다.
 - 실제 제품 구현을 요청받아도 Spec Architect가 요구사항으로 변환한다.
 
 ### 5.3 `IChatClient` 경계
 
-Agent Framework의 `ChatClientAgent`/`AsAIAgent` 패턴과 호환되도록 모델 호출을 `IChatClient` 중심으로 구성한다. Copilot SDK에 직접 `IChatClient` 구현이 제공되지 않는 버전이면 얇은 세션 어댑터를 `Ajure.Infrastructure`에 둔다. 세션 생성 시 모델이 고정되므로 하나의 어댑터 인스턴스는 하나의 모델 ID와 역할만 담당한다.
+Agent Framework의 `ChatClientAgent`/`AsAIAgent` 패턴과 호환되도록 모델 호출을 `IChatClient` 중심으로 구성한다. 얇은 공급자 게이트웨이를 `Ajure.Infrastructure`에 두며 워크플로와 검증 코드는 공급자별 HTTP 형식을 알지 못한다.
 
 어댑터 책임:
 
-- `ChatMessage`와 Copilot SDK 메시지 변환
-- 스트리밍/완료 이벤트를 표준 응답으로 변환
-- 취소, 제한 시간, 모델 오류를 명시적 예외로 변환
-- 도구 호출은 허용 목록과 대조
-- 세션 정리 보장
+- 공통 모델 요청을 공급자별 JSON과 인증 헤더로 변환
+- 공급자 응답의 텍스트와 요청 ID를 표준 응답으로 변환
+- 취소, 제한 시간, 429, 일시적 5xx, 인증 오류, 잘못된 응답을 구분
+- 응답 본문과 API 키를 로그에 남기지 않음
+- `HttpResponseMessage`와 취소 리소스 정리 보장
 
-패키지 버전과 API 표면은 구현 시 공식 NuGet 및 Microsoft Learn을 다시 확인해 잠근다.
+공급자 HTTP 계약은 구현 시 각 공급자의 공식 API 문서를 다시 확인해 잠근다.
 
-MVP의 작성 및 평가 세션은 Copilot SDK를 사용하며, 평가 다양성은 서로 다른 모델 ID로 확보한다. 다른 `IChatClient` 제공자를 Copilot SDK 필수 단계의 대체 성공으로 처리하지 않는다. Copilot SDK 단계가 인증, 정책 또는 런타임 문제로 실패하면 Job은 명시적으로 실패한다.
+MVP의 작성 및 평가는 구성된 직접 API를 사용하며, 평가 다양성은 서로 다른 공급자 한정 모델 ID로 확보한다. 배정된 공급자가 실패하면 Job은 명시적으로 실패한다.
 
-### 5.4 P0 Copilot SDK 로컬 실증 게이트
+### 5.4 P0 직접 공급자 API 로컬 실증 게이트
 
-Copilot SDK는 전체 생성 경로의 필수 의존성이므로 B4보다 먼저 개발 호스트에서 다음 Spike를 통과해야 한다. 이 게이트는 Azure 호스팅 검증을 대체하지 않는다.
+실제 모델 워크플로를 시작하기 전에 개발 호스트에서 다음 Probe를 통과해야 한다.
 
-1. SDK 기본 runtime을 로컬 Aspire Worker 프로세스에서 시작한다.
-2. user-secrets 또는 이미 로그인한 개발자 자격증명으로 비대화형 session 생성과 응답 수신을 확인한다.
-3. `ListModelsAsync`에서 구성된 서로 다른 모델 ID 2개 이상을 확인한다.
-4. 서로 다른 모델의 격리 session을 동시에 실행해 데이터가 섞이지 않는지 확인한다.
-5. 파일 쓰기 요청에서도 도구 실행 이벤트가 0건인지 확인한다.
-6. 취소, 제한 시간, session 삭제와 client 종료를 확인한다.
+1. 환경 변수 또는 user-secrets에 OpenAI, Anthropic, Gemini 중 두 공급자 이상의 키와 모델 ID를 설정한다.
+2. `ListModelsAsync`에서 공급자 한정 모델 ID 2개 이상을 확인한다.
+3. 구성된 모든 공급자에 짧은 독립 요청을 동시에 보내 응답과 요청 ID를 확인한다.
+4. 각 요청에 system/developer 지침이 적용되고 도구 정의가 전송되지 않는지 계약 테스트로 확인한다.
+5. 인증 실패, 429/5xx, 취소, 제한 시간을 명시적 실패로 변환하는지 확인한다.
+6. 로그와 오류 응답에 API 키나 모델 원문 응답이 없는지 확인한다.
 
 이 게이트가 실패하면 B4 이후 실제 모델 워크플로를 진행하지 않고 원인을 명시한다.
 
-### 5.5 Azure 호스팅 검증 게이트
+### 5.5 셀프호스트 경계
 
-다음 항목은 B7에서 Azure 배포와 함께 검증하며 현재 통과한 것으로 서술하지 않는다.
-
-1. Azure Container Apps에서 Copilot runtime 시작, session 생성, 응답 수신, 정상 종료
-2. GitHub App installation token을 `COPILOT_GITHUB_TOKEN`으로 runtime에 주입하고 만료 전에 갱신
-3. 다중 session의 프로세스 수, 메모리, 격리, 제한, 재시도 측정
-4. 서비스 자격증명 사용의 GitHub 조직 정책, 라이선스, 비용과 쿼터 확인
+- 운영에 필요한 외부 의존성은 운영자가 선택한 모델 공급자 API뿐이다.
+- 애플리케이션은 Azure 계정, GitHub Copilot 구독, GitHub App 또는 관리형 비밀 저장소를 요구하지 않는다.
+- API와 Worker는 같은 로컬 또는 영속 volume의 SQLite 파일을 사용한다.
+- 단일 Worker 프로세스를 MVP 지원 범위로 두고 수평 확장이 필요해질 때 PostgreSQL 등 서버 데이터베이스로 전환한다.
 
 ## 6. 정규화된 명세 모델
 
@@ -235,7 +235,7 @@ TechnicalDecision
 
 Artifact
   id, specVersionId, kind, targetId?, path, contentHash
-  templateVersion, status, blobUri
+  templateVersion, status, blobName
 
 ValidationRun
   id, specVersionId, baseVersionId?, iteration, status
@@ -359,41 +359,41 @@ JobEvent
 - API는 연결 시 `Last-Event-ID` 이후 이벤트를 먼저 재생한 뒤 1초 간격으로 새 행을 조회한다.
 - 15초마다 heartbeat를 보내 중간 프록시의 idle timeout을 방지한다.
 - Terminal event 이후 스트림을 닫는다.
-- 이 구조는 in-memory backplane에 의존하지 않아 Container Apps의 다른 API replica로 재연결해도 동작한다.
+- 이 구조는 in-memory backplane에 의존하지 않아 API 재시작 후에도 SQLite의 저장 이벤트부터 재연결할 수 있다.
 
 ## 10. 저장소 설계
 
-### Azure Blob Storage
-- Markdown 산출물
-- Export ZIP
-- 큰 평가 리포트
-- 불변 버전 경로 사용
+### SQLite 파일
 
-### Azure Table Storage
-- Project, SpecVersion, Job, Artifact 메타데이터
-- Decision과 Validation 요약
-- Job ID로 partition된 append-only `JobEvent`와 sequence
-- 핵심 명세 엔터티는 Project ID, 진행 이벤트는 Job ID를 Partition Key로 사용
+- 기본 경로는 `AJURE_DATA_PATH`로 지정하고 API와 Worker가 동일한 절대 경로를 사용한다.
+- WAL 모드, foreign key, busy timeout을 활성화한다.
+- Project, SpecVersion, Decision, Job, JobEvent, Artifact, ValidationRun은 JSON payload와 조회용 키를 저장한다.
+- Markdown 산출물, Export ZIP, 평가 리포트는 Blob 테이블의 BLOB 열에 저장한다.
+- 스키마 생성은 멱등이어야 하며 애플리케이션 시작 전에 완료한다.
 
-### Azure Queue Storage
-- Analyze, Generate, Validate, Export Job
-- 메시지는 식별자만 포함하고 원문은 포함하지 않음
-- Poison Queue와 최대 재시도 설정
+### SQLite Job 큐
 
-MVP 규모에 적합한 단순 Azure Storage 구성을 사용하고, 쿼리 요구가 커질 때 Cosmos DB 전환을 검토한다.
+- Analyze, Generate, Validate, Export Job 메시지는 식별자만 포함한다.
+- dequeue는 트랜잭션에서 가장 오래된 visible 메시지 하나를 lease하고 `dequeueCount`를 증가시킨다.
+- lease 만료 전에는 다른 Worker가 같은 메시지를 가져갈 수 없다.
+- 일시적 실패는 지수 백오프 뒤 다시 visible 상태로 만들고 최대 재시도 이후 Poison 테이블로 이동한다.
+- `JobEvent.sequence` 배정과 Job의 `lastSequence` 갱신은 하나의 트랜잭션에서 수행한다.
+
+SQLite는 단일 호스트·단일 Worker MVP에 맞춘다. 다중 Worker 또는 높은 쓰기 처리량이 실제로 필요해질 때 같은 저장소 facade 뒤에서 PostgreSQL로 전환한다.
 
 ## 11. 보안 및 개인정보
 
 - 인증은 MVP에서 GitHub OAuth/OIDC를 우선한다.
-- 사용자 로그인용 OAuth 토큰과 Copilot SDK 서비스 자격증명을 분리한다.
-- 애플리케이션의 Copilot SDK 서비스 자격증명은 Key Vault에 저장하고 최소 권한을 적용한다.
-- 사용자의 OAuth 토큰을 모델 호출용 공용 자격증명으로 재사용하지 않는다.
-- Managed Identity로 Storage, Key Vault, Application Insights에 접근한다.
+- 사용자 로그인용 OAuth 토큰과 모델 공급자 API 키를 분리한다.
+- 모델 API 키는 서버 환경 변수 또는 .NET user-secrets에서 읽고 SQLite에 저장하지 않는다.
+- 사용자의 OAuth 토큰을 모델 호출 자격증명으로 재사용하지 않는다.
+- 공급자 API 통신은 HTTPS만 허용한다.
 - 사용자 입력은 프로젝트 소유자 기준으로 격리한다.
-- Export URL은 짧은 만료 시간의 SAS 또는 API 스트림을 사용한다.
+- Export는 권한을 확인한 API 스트림으로 전달한다.
 - HTML 렌더링 시 Markdown 내 임의 HTML과 스크립트를 제거한다.
 - Prompt Injection 텍스트는 데이터로 구분하고 시스템/평가 규칙을 덮지 못하게 한다.
 - 문서 보존 기간과 즉시 삭제 정책을 UI에 표시한다.
+- 운영자는 SQLite 파일을 비공개 디렉터리에 두고 파일 권한과 디스크 암호화를 구성한다.
 
 ## 12. 신뢰성
 
@@ -408,7 +408,7 @@ MVP 규모에 적합한 단순 Azure Storage 구성을 사용하고, 쿼리 요�
 
 ## 13. 관측성
 
-- OpenTelemetry Trace: API -> Queue -> Worker -> Agent step -> Storage
+- OpenTelemetry Trace: API -> SQLite Queue -> Worker -> Agent step -> SQLite
 - Metric:
   - 단계별 latency
   - 모델별 token/요청/실패율
@@ -420,45 +420,38 @@ MVP 규모에 적합한 단순 Azure Storage 구성을 사용하고, 쿼리 요�
   - ID, 상태 전이, 오류 코드만 기본 기록
   - 사용자 원문과 생성 문서 전체는 기록하지 않음
 
-## 14. Aspire 및 Azure 배포
+## 14. 셀프호스트 실행
 
-### 14.1 AppHost 리소스
+### 14.1 선택적 AppHost
 
 ```text
 Ajure.AppHost
-  ├─ web (Ajure.Web, 프론트 프로젝트가 준비된 뒤 등록)
+  ├─ web (Ajure.Web)
   ├─ api (Ajure.Api)
   ├─ worker (Ajure.Worker)
-  ├─ storage (Blob + Queue + Table / local Azurite executable)
-  ├─ key-vault reference
-  └─ application-insights / OpenTelemetry
+  └─ shared AJURE_DATA_PATH
 ```
 
-로컬 Storage는 AppHost가 Azurite 실행 파일을 Aspire 리소스로 시작하며 Docker 또는 `RunAsEmulator()`에 의존하지 않는다. Azure 게시 모드에서는 같은 논리 리소스를 Azure Storage Account로 배포한다.
+AppHost는 세 프로세스를 한 번에 시작하는 개발 편의 기능이다. SQLite는 별도 프로세스가 아니며 API와 Worker가 같은 파일 경로를 받는다. 운영 배포는 AppHost를 요구하지 않는다.
 
-### 14.2 Azure 리소스
+### 14.2 필수 운영 입력
 
-- Azure Container Apps Environment
-- Container App: Web
-- Container App: API
-- Container App: Worker
-- Azure Storage Account
-- Azure Key Vault
-- Azure Container Registry
-- Log Analytics Workspace / Application Insights
-- Managed Identities
+- 쓰기 가능한 영속 데이터 디렉터리와 `AJURE_DATA_PATH`
+- OpenAI, Anthropic, Gemini 중 두 공급자 이상의 API 키와 모델 ID
+- API와 Worker용 .NET 런타임
+- Web 빌드용 Node.js 또는 미리 빌드된 정적 파일
+- 외부 공개 시 TLS와 인증을 담당하는 운영자 선택 reverse proxy
 
-### 14.3 배포 흐름
+### 14.3 실행 흐름
 
-1. Aspire AppHost로 로컬 구성과 Health Check 확인
-2. `azd` 환경 생성
-3. Aspire manifest와 인프라 정의 검토
-4. `azd up`으로 프로비저닝 및 Azure Container Apps 배포
-5. Key Vault 비밀과 Managed Identity 권한 설정
-6. Smoke Test와 Telemetry 확인
-7. `azd pipeline config` 기반 CI/CD 연결
+1. 저장소를 clone하고 .NET/Node.js 의존성을 복원한다.
+2. SQLite 절대 경로와 공급자 키/모델 ID를 환경 변수 또는 user-secrets로 설정한다.
+3. API와 Worker를 같은 `AJURE_DATA_PATH`로 실행한다.
+4. Web을 실행하거나 정적 빌드를 선택한 웹 서버에서 제공한다.
+5. Fake E2E와 구성된 실제 공급자 Probe를 실행한다.
+6. 외부 공개 시 TLS, 인증, 데이터 volume 백업을 구성한다.
 
-배포 지역은 Copilot SDK 런타임 네트워크 요구, 데이터 거주성, Container Apps 가용성을 확인해 구현 시 결정한다.
+프로젝트는 특정 클라우드용 인프라 정의를 포함하지 않는다. 운영자는 일반 VM, bare metal, OCI 런타임 등 원하는 호스트를 선택할 수 있다.
 
 ## 15. 제안 저장소 구조
 
@@ -472,7 +465,6 @@ Ajure.AppHost
 ├─ AI-FILE-SPEC.md
 ├─ EVALUATION.md
 ├─ UX-SPEC.md
-├─ azure.yaml              # B7에서 생성
 ├─ src/
 │  ├─ Ajure.AppHost/
 │  ├─ Ajure.ServiceDefaults/
@@ -504,14 +496,15 @@ Ajure.AppHost
 - 대상 경로/템플릿 렌더링
 
 ### 계약 테스트
-- Copilot SDK 어댑터의 메시지/이벤트 변환
+- OpenAI, Anthropic, Gemini 요청/응답 변환과 인증 헤더
 - `IChatClient` 오류/취소/스트리밍 동작
 - ProjectSpec 구조화 출력 파싱
 - 평가 실패와 Finding 0건의 구분
 - 동일 입력의 Finding fingerprint, 집계, 점수 결정성
 
 ### 통합 테스트
-- Queue -> Worker -> Blob/Table 체크포인트
+- SQLite Queue -> Worker -> Blob/메타데이터 체크포인트
+- queue lease, 재시도, poison 이동과 이벤트 sequence 원자성
 - 생성 중 재시작 및 재시도
 - SSE 이벤트 순서
 - Export ZIP 경로와 파일 해시
@@ -534,31 +527,31 @@ Ajure.AppHost
 |---|---|---|
 | TD-001 | ProjectSpec을 유일한 의미 기준으로 사용 | 문서 간 드리프트 방지 |
 | TD-002 | Agent Framework로 명시적 워크플로 구성 | 필수 조건 충족 및 역할/상태 제어 |
-| TD-003 | Copilot SDK를 Empty 모드와 빈 도구 허용 목록으로 실행 | 제품의 비코딩 경계 보장 |
+| TD-003 | 직접 모델 API에 도구 정의를 전송하지 않고 Agent Framework에도 도구를 등록하지 않음 | 제품의 비코딩 경계 보장 |
 | TD-004 | 결정적 검사 후 LLM 평가 | 비용 절감과 평가 신뢰성 향상 |
 | TD-005 | Queue 기반 Worker | 장시간 작업, 재시도, 복구 |
-| TD-006 | Azure Storage로 MVP 저장 | Aspire/Azure 통합과 운영 단순성 |
+| TD-006 | 단일 SQLite 파일로 메타데이터, Blob, Job 큐 저장 | 외부 인프라 없는 셀프호스트와 백업 단순성 |
 | TD-007 | SSE 사용 | 단방향 진행 표시를 WebSocket보다 단순하게 구현 |
 | TD-008 | 불변 승인 버전 | 신뢰 가능한 회귀 기준선 확보 |
 | TD-009 | 서로 다른 모델 ID 2개 이상의 독립 평가와 결정적 Finding 집계 | 단일 모델 자기확증을 줄이고 재현 가능한 점수와 게이트 제공 |
-| TD-010 | 로컬 개발은 Aspire가 관리하는 실행 파일 리소스를 사용하고 컨테이너 런타임에 의존하지 않음 | 개발 환경 제약과 Azure 호스팅 게이트 분리 |
+| TD-010 | AppHost는 선택적 개발 실행기로만 사용하고 운영은 표준 프로세스로 실행 | 특정 클라우드와 오케스트레이터 종속 제거 |
+| TD-011 | OpenAI, Anthropic, Gemini 공식 HTTPS API를 BCL `HttpClient`로 직접 호출 | 공급자 SDK와 Copilot runtime 종속 최소화 |
 
 ## 18. 구현 전 검증 항목
 
-- Copilot SDK의 Azure 호스팅 인증/라이선스 조건
-- 선택 모델 목록과 조직 정책의 사용 가능성
+- OpenAI, Anthropic, Gemini API 키와 선택 모델의 사용 가능성
 - 현재 Agent Framework 패키지의 안정 버전 및 Workflow API
-- Copilot SDK와 `IChatClient` 간 공식 어댑터 제공 여부
-- GitHub App installation token 발급과 갱신 방식
-- 조직 정책에서 서로 다른 모델 ID 2개 이상 사용 가능 여부
-- Azure Container Apps의 Copilot runtime 연결 방식과 동시성 한계
-- Aspire의 해당 버전 Azure Container Apps 배포 명령과 리소스 API
+- 각 공급자의 공식 요청/응답 계약, 제한 시간, 429/5xx 오류 형식
+- 구성된 서로 다른 모델 ID 2개 이상 사용 가능 여부
+- SQLite WAL과 queue lease의 단일 Worker 동작
 - 대상 코딩 도구별 최신 지침 파일 규격
 
 ## 19. 공식 참고 문서
 
 - Microsoft Agent Framework: <https://learn.microsoft.com/agent-framework/>
 - `IChatClient`: <https://learn.microsoft.com/dotnet/ai/ichatclient>
-- GitHub Copilot SDK NuGet: <https://www.nuget.org/packages/GitHub.Copilot.SDK>
-- Azure Container Apps와 `azd`: <https://learn.microsoft.com/azure/developer/azure-developer-cli/container-apps-workflows>
+- OpenAI Chat Completions API: <https://developers.openai.com/api/reference/resources/chat>
+- Anthropic Messages API: <https://platform.claude.com/docs/en/api/messages>
+- Gemini `generateContent` API: <https://ai.google.dev/api/generate-content>
+- SQLite: <https://sqlite.org/docs.html>
 - .NET Aspire: <https://learn.microsoft.com/dotnet/aspire/>

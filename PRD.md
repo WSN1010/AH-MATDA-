@@ -185,15 +185,16 @@
 - 사용자는 프로젝트와 관련 산출물을 삭제할 수 있어야 한다.
 - 삭제는 확인 절차를 거쳐야 하며 보존 정책에 따른 실제 삭제 상태를 표시해야 한다.
 
-### FR-016 필수 기술 플랫폼
+### FR-016 오픈소스 셀프호스팅 플랫폼
 
 - 작성, 평가, 회귀, 보정 워크플로는 Microsoft Agent Framework에서 실행돼야 한다.
-- 최소 Spec Architect와 독립 Reviewer 한 단계는 GitHub Copilot SDK 세션을 성공적으로 사용해야 한다.
-- Copilot SDK 필수 단계가 실패하면 다른 제공자로 조용히 대체해 Ready 결과를 만들면 안 된다.
+- OpenAI GPT, Anthropic Claude, Google Gemini 직접 API를 모두 지원하고 운영자가 서버 환경 변수 또는 .NET user-secrets로 각 API 키와 모델 ID를 설정할 수 있어야 한다.
+- 모델 호출은 GitHub Copilot SDK나 Azure 서비스에 의존하지 않고 각 공급자의 공식 HTTPS API를 사용해야 한다.
+- 선택된 작성 또는 평가 공급자가 실패하면 다른 공급자로 조용히 대체해 Ready 결과를 만들면 안 된다.
 - 필수 단계에서 서로 다른 모델 ID 2개 이상의 성공한 평가를 확보하지 못하면 Job은 명시적으로 실패해야 한다.
 - Fake 모델 모드는 개발 환경에서만 허용하며 결과를 `isSimulated`로 기록하고 실제 Ready, 출시 또는 벤치마크 근거로 사용하면 안 된다.
 - 모델 호출은 `IChatClient` 경계 뒤에 구성해야 한다.
-- 로컬 구성과 Azure 배포는 .NET Aspire AppHost를 기준으로 해야 한다.
+- 영속 데이터와 Job 큐는 셀프호스트의 SQLite 파일에 저장하고 외부 클라우드 계정을 요구하지 않아야 한다.
 
 ## 8. 비기능 요구사항
 
@@ -208,10 +209,10 @@
 - 부분 실패 시 완료된 산출물과 실패 단계를 보존해야 한다.
 
 ### NFR-003 보안
-- GitHub 토큰과 모델 자격증명은 Azure Key Vault에 저장해야 한다.
+- 모델 API 키는 서버 환경 변수 또는 .NET user-secrets에서만 읽고 SQLite, 응답, 로그, Telemetry에 저장하지 않아야 한다.
 - 사용자 문서를 모델 학습에 사용한다고 가정해서는 안 된다.
 - 로그에 원문 전체, 토큰, 개인정보를 기록해서는 안 된다.
-- 데이터 전송과 저장은 암호화해야 한다.
+- 공급자 API 통신은 HTTPS를 사용하고 운영 문서는 SQLite 파일의 접근 권한과 디스크 암호화 책임을 명시해야 한다.
 
 ### NFR-004 접근성
 - WCAG 2.2 AA를 목표로 한다.
@@ -225,11 +226,13 @@
 
 ### NFR-006 이식성
 - AI 제공자 호출은 `IChatClient` 경계 뒤에 있어야 한다.
+- OpenAI, Anthropic, Gemini 공급자별 HTTP 계약은 `Ajure.Infrastructure` 밖의 워크플로와 도메인 모델에 노출되면 안 된다.
 - 대상 도구 파일 형식은 코드 변경 없이 템플릿/레지스트리 버전으로 확장 가능해야 한다.
 
 ### NFR-007 배포
-- 로컬 구성과 Azure 구성을 .NET Aspire AppHost에서 선언해야 한다.
-- Azure 배포는 Aspire와 Azure Developer CLI 기반 경로를 사용해야 한다.
+- 표준 .NET 런타임, Node.js, 쓰기 가능한 SQLite 데이터 디렉터리만으로 셀프호스트할 수 있어야 한다.
+- .NET Aspire AppHost는 선택적인 로컬 개발 실행기일 뿐 운영 필수 요소가 아니어야 한다.
+- Azure 계정, GitHub Copilot 구독 또는 특정 상용 호스팅 서비스를 요구하면 안 된다.
 
 ## 9. 비즈니스 규칙
 
@@ -386,17 +389,17 @@
 **When** 운영자가 해당 Correlation ID를 조회하면
 **Then** API부터 실패 단계까지 Trace를 찾을 수 있어야 하며 사용자 문서 본문과 비밀은 기본 Telemetry에 없어야 한다.
 
-### AC-020 이식성과 Aspire 배포
+### AC-020 셀프호스트 이식성
 
-**Given** 동일 애플리케이션을 로컬과 Azure에서 실행할 때
-**When** Aspire AppHost와 `azd` 배포 경로를 사용하면
-**Then** 서비스 참조와 Health Check가 유지되고 모델 경계는 `IChatClient` 계약을 통해 교체 가능해야 한다.
+**Given** 새 호스트에 .NET, Node.js, 쓰기 가능한 데이터 디렉터리가 있을 때
+**When** 운영자가 SQLite 경로와 두 개 이상의 모델 공급자 자격증명을 설정해 애플리케이션을 실행하면
+**Then** Azure나 GitHub Copilot 없이 API, Worker, Web이 동작하고 모델 경계는 `IChatClient` 계약을 유지해야 한다.
 
-### AC-021 필수 Agent Framework와 Copilot SDK
+### AC-021 필수 Agent Framework와 직접 공급자 API
 
 **Given** 생성/검증 Job이 Ready 후보에 도달했을 때
 **When** 실행 기록을 검사하면
-**Then** Microsoft Agent Framework 워크플로 안에서 Spec Architect와 독립 Reviewer가 실행됐고 최소 두 단계가 Copilot SDK 세션을 성공적으로 사용했음을 확인할 수 있어야 한다. Fake 모드로 생성된 버전은 `isSimulated`로 표시돼 실제 Ready 근거와 구분돼야 한다.
+**Then** Microsoft Agent Framework 워크플로 안에서 Spec Architect와 독립 Reviewer가 실행됐고 OpenAI, Anthropic, Gemini 중 구성된 공급자의 직접 API 세션을 성공적으로 사용했음을 확인할 수 있어야 한다. Fake 모드로 생성된 버전은 `isSimulated`로 표시돼 실제 Ready 근거와 구분돼야 한다.
 
 ### AC-022 다중 모델 독립 검토
 
@@ -442,7 +445,7 @@
 - 버전 스냅샷과 회귀 비교
 - 점수 및 근거 대시보드
 - ZIP 내보내기
-- Aspire 기반 Azure 배포
+- SQLite 기반 셀프호스트 실행과 OpenAI/Anthropic/Gemini API 설정
 - 최소 20개 벤치마크 브리프로 점수와 실제 결과의 상관 검증
 
 ## 15. 후속 범위

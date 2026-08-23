@@ -56,16 +56,16 @@
 ## 필수 기술 조건
 
 - **Microsoft Agent Framework**: 작성, 검토, 회귀, 보정 에이전트 워크플로를 실행한다.
-- **GitHub Copilot SDK**: 문서 생성 및 평가용 모델 세션을 제공한다. 코드 작성 도구는 노출하지 않는다.
-- **`IChatClient`**: 모델 호출을 표준화해 작성자와 평가자를 교체 가능하게 한다.
-- **.NET Aspire**: 웹, API, Worker, 저장소, 관측성을 로컬에서 구성하고 Azure로 배포한다.
-- **Azure**: Azure Container Apps를 목표 운영 환경으로 하며 배포와 호스팅 검증은 백엔드 B7에서 수행한다.
+- **OpenAI / Anthropic / Gemini API**: 사용자가 제공한 API 키로 문서 생성 및 평가 모델을 호출한다.
+- **`IChatClient`**: 모델 호출을 표준화해 작성자와 평가자를 공급자와 분리한다.
+- **SQLite**: 프로젝트, Job 큐, 이벤트, 산출물을 외부 인프라 없이 저장한다.
+- **.NET Aspire**: 선택적인 로컬 개발 실행기이며 운영 필수 요소가 아니다.
 
 ## 문서
 
 - [IDEATION.md](IDEATION.md): 아이디어와 제품 방향
 - [PRD.md](PRD.md): 제품 요구사항과 수용 기준
-- [TRD.md](TRD.md): 기술 설계와 Azure 배포 구조
+- [TRD.md](TRD.md): 기술 설계와 셀프호스트 구조
 - [DOCUMENT-SPEC.md](DOCUMENT-SPEC.md): 공통 문서 3종의 출력 계약
 - [AI-FILE-SPEC.md](AI-FILE-SPEC.md): 도구별 지침 파일 생성 규격
 - [EVALUATION.md](EVALUATION.md): 품질 점수와 회귀 검증 규격
@@ -79,4 +79,4 @@
 
 ## 현재 상태
 
-기획이 확정되어 **구현 단계**에 진입했다. 백엔드를 우선 구현하며 로컬 토폴로지는 컨테이너 런타임 없이 .NET Aspire로 구성한다. Azure 배포는 백엔드 B7로 유예하고, 2인(프론트/백) 분담과 규칙은 구현 문서를 따른다.
+기획이 확정되어 **구현 단계**에 진입했다. Azure와 GitHub Copilot SDK를 제거하고 SQLite 및 OpenAI/Anthropic/Gemini 직접 API를 사용하는 MIT 라이선스 셀프호스트 구조로 전환 중이다. 2인(프론트/백) 분담과 규칙은 구현 문서를 따른다.

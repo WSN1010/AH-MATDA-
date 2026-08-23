@@ -161,6 +161,7 @@
 2. 아주르는 **코드를 작성하지 않는다**.
 3. 결과물의 최소 단위는 공통 문서 3개와 대상 도구 지침 파일 1개다.
 4. Microsoft Agent Framework 사용은 필수다.
-5. Copilot SDK를 문서 생성·평가 모델 세션에 사용한다.
-6. Aspire를 통해 Azure에 배포한다.
-7. 90%는 마케팅 보장이 아니라 검증 가능한 제품 목표다.
+5. 사용자가 제공한 OpenAI, Anthropic Claude, Google Gemini API 자격증명으로 문서 생성·평가 모델 세션을 실행한다.
+6. 제품은 SQLite 기반 셀프호스팅으로 제공하며 Azure나 GitHub Copilot 구독을 요구하지 않는다.
+7. 소스 코드는 MIT 라이선스로 공개한다.
+8. 90%는 마케팅 보장이 아니라 검증 가능한 제품 목표다.
