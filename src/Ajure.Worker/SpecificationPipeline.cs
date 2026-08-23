@@ -78,9 +78,17 @@ public sealed class SpecificationPipeline(
                     "Building the simulated ProjectSpec.",
                     cancellationToken)
                 .ConfigureAwait(false);
+            var idea = StoredProjectIdea.Parse(project.Idea);
             spec = SimulatedSpecFactory.Create(
                 project.Name,
-                StoredProjectIdea.Parse(project.Idea).Summary);
+                idea.Summary,
+                idea.Constraints,
+                idea.Exclusions,
+                idea.ExistingDocs,
+                decisions
+                    .Where(static decision => !string.IsNullOrWhiteSpace(decision.Answer))
+                    .Select(static decision => $"{decision.Id}: {decision.Answer}")
+                    .ToArray());
         }
         else
         {
