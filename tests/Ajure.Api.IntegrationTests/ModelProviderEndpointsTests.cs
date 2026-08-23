@@ -5,6 +5,7 @@ using System.Text.Json;
 using Ajure.Agent;
 using Ajure.Api;
 using Ajure.Infrastructure;
+using Ajure.Specification;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -156,6 +157,99 @@ public sealed class ModelProviderEndpointsTests
 
             using var delete = await client.DeleteAsync("/api/model-providers/openai");
             Assert.Equal(HttpStatusCode.Conflict, delete.StatusCode);
+        }
+        finally
+        {
+            DeleteTestRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task ArtifactListReturnsOneEntryPerPath()
+    {
+        var root = TestRoot();
+        var dataPath = Path.Combine(root, "ajure.db");
+        var projectId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+
+        try
+        {
+            var store = new AjureStore(new StorageOptions
+            {
+                DataPath = dataPath,
+                BusyTimeoutMilliseconds = 5_000,
+                LeaseSeconds = 60
+            });
+            await store.InitializeAsync(CancellationToken.None);
+            await store.CreateProjectAsync(
+                new ProjectRecord(
+                    projectId,
+                    "Meal planner",
+                    "test",
+                    "en-US",
+                    "A meal planner for busy parents.",
+                    DateTimeOffset.UtcNow),
+                CancellationToken.None);
+            await store.SaveVersionAsync(
+                new SpecVersionRecord(
+                    versionId,
+                    projectId,
+                    1,
+                    SpecVersionStatus.Ready,
+                    null,
+                    "input-hash",
+                    "balanced",
+                    [TargetCatalog.ClaudeCode],
+                    true,
+                    null,
+                    null,
+                    DateTimeOffset.UtcNow,
+                    null),
+                CancellationToken.None);
+
+            await store.SaveArtifactAsync(
+                new ArtifactRecord(
+                    Guid.NewGuid(),
+                    versionId,
+                    ArtifactKind.Ideation,
+                    null,
+                    "IDEATION.md",
+                    "stale-hash",
+                    "2.0",
+                    ArtifactStatus.Stale,
+                    "artifacts/stale",
+                    "text/markdown",
+                    DateTimeOffset.UtcNow.AddMinutes(-1)),
+                CancellationToken.None);
+            await store.SaveArtifactAsync(
+                new ArtifactRecord(
+                    Guid.NewGuid(),
+                    versionId,
+                    ArtifactKind.Ideation,
+                    null,
+                    "IDEATION.md",
+                    "current-hash",
+                    "2.0",
+                    ArtifactStatus.Current,
+                    "artifacts/current",
+                    "text/markdown",
+                    DateTimeOffset.UtcNow),
+                CancellationToken.None);
+
+            using var factory = new ProviderApiFactory(dataPath, IPAddress.Loopback);
+            using var client = Client(factory);
+            var artifacts = await client.GetFromJsonAsync<ArtifactResponse[]>(
+                $"/api/spec-versions/{versionId}/artifacts");
+
+            Assert.NotNull(artifacts);
+            var artifact = Assert.Single(artifacts);
+            Assert.Equal("IDEATION.md", artifact.Path);
+            Assert.Equal("Valid", artifact.Status);
+            Assert.Equal("current-hash", artifact.ContentHash);
+
+            var project = await client.GetFromJsonAsync<ProjectResponse>($"/api/projects/{projectId}");
+            Assert.NotNull(project);
+            Assert.Equal(1, project.ArtifactCount);
         }
         finally
         {

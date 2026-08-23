@@ -81,10 +81,14 @@ public static class ApiResponseMapper
             version?.Id ?? Guid.Empty,
             version?.Number ?? 0,
             version?.TargetIds ?? [],
-            artifacts.Count(static artifact =>
-                artifact.Status == ArtifactStatus.Current
-                && artifact.Kind is not ArtifactKind.ExportZip
-                && artifact.Kind is not ArtifactKind.ValidationReport),
+            artifacts
+                .Where(static artifact =>
+                    artifact.Status == ArtifactStatus.Current
+                    && artifact.Kind is not ArtifactKind.ExportZip
+                    && artifact.Kind is not ArtifactKind.ValidationReport)
+                .Select(static artifact => artifact.Path)
+                .Distinct(StringComparer.Ordinal)
+                .Count(),
             decisions.Count(static decision => decision.Critical && string.IsNullOrWhiteSpace(decision.Answer)),
             updatedAt,
             ParseStoredIdea(project.Idea),

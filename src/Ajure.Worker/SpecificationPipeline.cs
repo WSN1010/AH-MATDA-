@@ -682,9 +682,29 @@ public sealed class SpecificationPipeline(
             .ConfigureAwait(false);
 
         var existing = await store.ListArtifactsAsync(versionId, cancellationToken).ConfigureAwait(false);
+        var reusable = existing
+            .Where(static artifact => artifact.Kind is not ArtifactKind.ExportZip)
+            .GroupBy(static artifact => artifact.Path, StringComparer.Ordinal)
+            .ToDictionary(
+                static group => group.Key,
+                static group => group
+                    .OrderByDescending(static artifact => artifact.Status == ArtifactStatus.Current)
+                    .ThenByDescending(static artifact => artifact.CreatedAt)
+                    .First(),
+                StringComparer.Ordinal);
+        var renderedPaths = bundle.Documents
+            .Select(static document => document.Path)
+            .Concat(bundle.TargetFiles.Select(static file => file.Path))
+            .ToHashSet(StringComparer.Ordinal);
+        var reusableIds = reusable
+            .Where(pair => renderedPaths.Contains(pair.Key))
+            .Select(static pair => pair.Value.Id)
+            .ToHashSet();
+
         foreach (var artifact in existing.Where(static artifact =>
                      artifact.Status == ArtifactStatus.Current
-                     && artifact.Kind is not ArtifactKind.ExportZip))
+                     && artifact.Kind is not ArtifactKind.ExportZip)
+                 .Where(artifact => !reusableIds.Contains(artifact.Id)))
         {
             await store.SaveArtifactAsync(
                     artifact with { Status = ArtifactStatus.Stale },
@@ -700,6 +720,7 @@ public sealed class SpecificationPipeline(
                     targetId: null,
                     document.Path,
                     document.Content,
+                    reusable.GetValueOrDefault(document.Path),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -712,6 +733,7 @@ public sealed class SpecificationPipeline(
                     string.Join(",", target.TargetIds),
                     target.Path,
                     target.Content,
+                    reusable.GetValueOrDefault(target.Path),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -732,11 +754,12 @@ public sealed class SpecificationPipeline(
         string? targetId,
         string path,
         string content,
+        ArtifactRecord? existing,
         CancellationToken cancellationToken)
     {
-        var artifactId = Guid.NewGuid();
+        var artifactId = existing?.Id ?? Guid.NewGuid();
         var bytes = Encoding.UTF8.GetBytes(content);
-        var blobName = $"artifacts/{versionId:N}/{artifactId:N}.md";
+        var blobName = existing?.BlobName ?? $"artifacts/{versionId:N}/{artifactId:N}.md";
         await store.PutBlobAsync(
                 blobName,
                 BinaryData.FromBytes(bytes),

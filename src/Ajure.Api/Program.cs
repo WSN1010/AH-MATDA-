@@ -444,11 +444,6 @@ api.MapGet("/spec-versions/{versionId:guid}/artifacts", async (
     AjureStore store,
     CancellationToken cancellationToken) =>
 {
-    if (await store.GetVersionAsync(versionId, cancellationToken).ConfigureAwait(false) is null)
-    {
-        return ApiProblems.NotFound(context, "version_not_found", "The specification version was not found.");
-    }
-
     var version = await store.GetVersionAsync(versionId, cancellationToken).ConfigureAwait(false);
     if (version is null)
     {
@@ -462,6 +457,12 @@ api.MapGet("/spec-versions/{versionId:guid}/artifacts", async (
                 artifact.Status != ArtifactStatus.Proposed
                 && artifact.Kind is not ArtifactKind.ExportZip
                 && artifact.Kind is not ArtifactKind.ValidationReport)
+            .GroupBy(static artifact => artifact.Path, StringComparer.Ordinal)
+            .Select(static group => group
+                .OrderByDescending(static artifact => artifact.Status == ArtifactStatus.Current)
+                .ThenByDescending(static artifact => artifact.CreatedAt)
+                .First())
+            .OrderBy(static artifact => artifact.Path, StringComparer.Ordinal)
             .Select(artifact => ApiResponseMapper.Artifact(artifact, version.Number)));
 });
 
