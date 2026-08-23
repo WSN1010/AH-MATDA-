@@ -52,6 +52,12 @@ export function AppShell({
             <NavLink to="/projects" className={({ isActive }) => (isActive ? 'navlink navlink--on' : 'navlink')}>
               프로젝트
             </NavLink>
+            <NavLink
+              to="/settings/providers"
+              className={({ isActive }) => (isActive ? 'navlink navlink--on' : 'navlink')}
+            >
+              모델 설정
+            </NavLink>
           </nav>
         </div>
         <MockNotice />

@@ -5,6 +5,7 @@ import { NewProject } from './routes/NewProject'
 import { Decisions } from './routes/Decisions'
 import { Run } from './routes/Run'
 import { Workspace } from './routes/Workspace'
+import { ProviderSettings } from './routes/ProviderSettings'
 
 export function App() {
   return (
@@ -16,6 +17,7 @@ export function App() {
         <Route path="/projects/:id/decisions" element={<Decisions />} />
         <Route path="/projects/:id/run/:jobId" element={<Run />} />
         <Route path="/projects/:id/workspace" element={<Workspace />} />
+        <Route path="/settings/providers" element={<ProviderSettings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>

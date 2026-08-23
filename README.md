@@ -75,13 +75,14 @@ Fake 모드는 외부 모델을 호출하지 않으며 전체 생성·검증·ZI
 
 ### 실제 모델 API 설정
 
-API 키는 브라우저나 저장소에 저장하지 않고 Worker의 환경 변수 또는 .NET user-secrets로만 주입한다. Ready 판정에는 서로 다른 공급자 모델이 최소 2개 필요하며, 세 공급자를 모두 함께 설정할 수 있다.
+AppHost를 실행한 뒤 웹의 **모델 설정** 메뉴(`/settings/providers`)에서 OpenAI, Anthropic, Gemini API 키와 모델 ID를 저장할 수 있다. 키는 브라우저 저장소나 API 응답에 남지 않으며, SQLite 파일 옆의 Data Protection 키 링으로 보호되어 로컬 SQLite에 저장된다. Ready 판정에는 서로 다른 공급자 모델이 최소 2개 필요하며, 세 공급자를 모두 함께 설정할 수 있다.
+
+서버 운영자가 설정을 고정하려면 AppHost를 시작하기 전에 환경 변수를 지정한다. 이 값은 웹에서 저장한 값보다 우선하며 설정 화면에서 변경하거나 삭제할 수 없다.
 
 ```powershell
-dotnet user-secrets --project src\Ajure.Worker set OPENAI_API_KEY "<openai-key>"
-dotnet user-secrets --project src\Ajure.Worker set ANTHROPIC_API_KEY "<anthropic-key>"
-dotnet user-secrets --project src\Ajure.Worker set GEMINI_API_KEY "<gemini-key>"
-
+$env:OPENAI_API_KEY = "<openai-key>"
+$env:ANTHROPIC_API_KEY = "<anthropic-key>"
+$env:GEMINI_API_KEY = "<gemini-key>"
 $env:AJURE_FAKE_MODEL = "false"
 dotnet run --project src\Ajure.AppHost
 ```

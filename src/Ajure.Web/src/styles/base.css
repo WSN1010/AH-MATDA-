@@ -239,6 +239,8 @@ pre,
 }
 
 .topbar__nav {
+  display: flex;
+  gap: var(--s1);
   margin-inline-start: auto;
   flex: 0 0 auto;
 }
@@ -265,6 +267,25 @@ pre,
   text-decoration: underline;
   text-decoration-thickness: 2px;
   text-underline-offset: 8px;
+}
+
+@media (max-width: 640px) {
+  .topbar__inner {
+    flex-wrap: wrap;
+    column-gap: var(--s2);
+  }
+
+  .topbar__context {
+    order: 3;
+    flex-basis: 100%;
+    padding: var(--s2) 0 0;
+    border-inline: 0;
+    border-block-start: 1px solid var(--border);
+  }
+
+  .navlink {
+    padding-inline: var(--s2);
+  }
 }
 
 .mocknote {

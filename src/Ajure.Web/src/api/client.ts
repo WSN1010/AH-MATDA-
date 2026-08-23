@@ -6,6 +6,8 @@ import type {
   IdeaInput,
   JobEvent,
   JobStatus,
+  ModelProviderList,
+  ModelProviderStatus,
   Project,
   ProjectSummary,
   ValidationRun,
@@ -97,6 +99,56 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       retryable: true,
     })
   }
+}
+
+async function liveRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const unreachable = () =>
+    new ApiError({
+      code: 'model_settings_unreachable',
+      message: 'localhost API를 먼저 실행하세요.',
+      correlationId: '-',
+      retryable: true,
+    })
+
+  let response: Response
+  try {
+    response = await fetch(BASE + path, {
+      method,
+      headers:
+        body === undefined
+          ? { Accept: 'application/json' }
+          : { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  } catch {
+    throw unreachable()
+  }
+
+  const contentType = response.headers.get('content-type') ?? ''
+  const isJson = contentType.includes('json')
+  if (response.status === 204) return undefined as T
+  if (!isJson) throw unreachable()
+
+  const payload = await response.json()
+  if (!response.ok) throw toApiError(payload, response.status)
+  return payload as T
+}
+
+// ---------------------------------------------------------- 모델 공급자 설정
+
+export function listModelProviders(): Promise<ModelProviderList> {
+  return liveRequest<ModelProviderList>('GET', '/api/model-providers')
+}
+
+export function saveModelProvider(
+  providerId: ModelProviderStatus['id'],
+  input: { apiKey: string; model: string },
+): Promise<ModelProviderStatus> {
+  return liveRequest<ModelProviderStatus>('PUT', `/api/model-providers/${providerId}`, input)
+}
+
+export function deleteModelProvider(providerId: ModelProviderStatus['id']): Promise<void> {
+  return liveRequest<void>('DELETE', `/api/model-providers/${providerId}`)
 }
 
 // ------------------------------------------------------------------ 프로젝트

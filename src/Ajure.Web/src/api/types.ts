@@ -17,6 +17,7 @@ export type ArtifactKind = 'Ideation' | 'Prd' | 'Trd' | 'AgentInstruction'
 export type JobState = 'Queued' | 'Running' | 'Succeeded' | 'Failed'
 export type StageState = 'Pending' | 'Running' | 'Done' | 'Failed'
 export type SupportLevel = 'Stable' | 'Basic' | 'Generic'
+export type ModelProviderSource = 'local' | 'environment' | null
 
 /** 사용자가 입력한 아이디어 원문. FR-001 */
 export interface IdeaInput {
@@ -233,6 +234,22 @@ export interface ProblemDetails {
   correlationId: string
   retryable: boolean
   details?: Record<string, string>
+}
+
+export interface ModelProviderStatus {
+  id: 'openai' | 'anthropic' | 'gemini'
+  displayName: string
+  configured: boolean
+  source: ModelProviderSource
+  model: string
+  editable: boolean
+  errorCode: string | null
+}
+
+export interface ModelProviderList {
+  requiredCount: number
+  configuredCount: number
+  providers: ModelProviderStatus[]
 }
 
 /** 대상 코딩 에이전트 레지스트리 항목. AI-FILE-SPEC §3 */
