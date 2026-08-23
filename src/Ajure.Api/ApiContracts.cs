@@ -26,6 +26,22 @@ public sealed record CreateVersionRequest(
 
 public sealed record UpdateArtifactRequest(string Content);
 
+public sealed record SaveModelProviderRequest(string? ApiKey, string? Model);
+
+public sealed record ModelProviderResponse(
+    string Id,
+    string DisplayName,
+    bool Configured,
+    string? Source,
+    string Model,
+    bool Editable,
+    string? ErrorCode);
+
+public sealed record ModelProviderListResponse(
+    int RequiredCount,
+    int ConfiguredCount,
+    ModelProviderResponse[] Providers);
+
 public sealed record JobAcceptedResponse(Guid JobId);
 
 public sealed record ProjectSummaryResponse(

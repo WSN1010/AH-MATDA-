@@ -11,6 +11,9 @@ public static class ApiProblems
     public static IResult Conflict(HttpContext context, string code, string message) =>
         Create(context, StatusCodes.Status409Conflict, code, message, retryable: false);
 
+    public static IResult Forbidden(HttpContext context, string code, string message) =>
+        Create(context, StatusCodes.Status403Forbidden, code, message, retryable: false);
+
     public static IResult Validation(
         HttpContext context,
         string code,

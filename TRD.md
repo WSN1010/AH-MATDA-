@@ -356,7 +356,7 @@ JobEvent
 
 - `providerId`는 `openai`, `anthropic`, `gemini`만 허용한다.
 - `GET` 응답은 `requiredCount`, `configuredCount`, `providers[]`를 포함한다.
-- 각 공급자 항목은 `id`, `displayName`, `configured`, `source(local|environment)`, `model`, `editable`만 반환하고 API 키 또는 일부 문자를 반환하지 않는다.
+- 각 공급자 항목은 `id`, `displayName`, `configured`, `source(local|environment|null)`, `model`, `editable`, `errorCode`만 반환하고 API 키 또는 일부 문자를 반환하지 않는다. 보호 키를 읽을 수 없으면 해당 공급자만 `configured=false`, `errorCode=credential_unreadable`로 표시한다.
 - `PUT` 본문은 `apiKey`, `model`이며 둘 다 공백이 아니어야 한다. 저장 성공 후 키 입력값을 다시 응답하지 않는다.
 - 환경 변수 또는 user-secrets로 관리되는 공급자의 `PUT`/`DELETE`는 `409 provider_managed_by_environment`로 거부한다.
 - 설정 변경 엔드포인트는 loopback 요청에만 허용하고 브라우저 Origin도 loopback인지 확인한다. 원격 요청은 `403 local_access_required`로 거부한다.

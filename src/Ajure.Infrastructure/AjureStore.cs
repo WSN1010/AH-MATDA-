@@ -124,6 +124,12 @@ public sealed class AjureStore
                     ErrorType TEXT NOT NULL,
                     FailedAt INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS ModelProviderCredentials (
+                    ProviderId TEXT PRIMARY KEY,
+                    ProtectedApiKey TEXT NOT NULL,
+                    Model TEXT NOT NULL,
+                    UpdatedAt INTEGER NOT NULL
+                );
                 """,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -379,6 +385,66 @@ public sealed class AjureStore
             await RollbackAsync(connection).ConfigureAwait(false);
             throw;
         }
+    }
+
+    public async Task SaveModelProviderCredentialAsync(
+        ModelProviderCredentialRecord credential,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await UpsertAsync(
+                connection,
+                """
+                INSERT INTO ModelProviderCredentials (ProviderId, ProtectedApiKey, Model, UpdatedAt)
+                VALUES ($providerId, $protectedApiKey, $model, $updatedAt)
+                ON CONFLICT (ProviderId) DO UPDATE SET
+                    ProtectedApiKey = excluded.ProtectedApiKey,
+                    Model = excluded.Model,
+                    UpdatedAt = excluded.UpdatedAt;
+                """,
+                cancellationToken,
+                ("$providerId", credential.ProviderId),
+                ("$protectedApiKey", credential.ProtectedApiKey),
+                ("$model", credential.Model),
+                ("$updatedAt", Milliseconds(credential.UpdatedAt)))
+            .ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<ModelProviderCredentialRecord>> ListModelProviderCredentialsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = Command(
+            connection,
+            """
+            SELECT ProviderId, ProtectedApiKey, Model, UpdatedAt
+            FROM ModelProviderCredentials
+            ORDER BY ProviderId COLLATE BINARY;
+            """);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var credentials = new List<ModelProviderCredentialRecord>();
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            credentials.Add(new ModelProviderCredentialRecord(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(3))));
+        }
+
+        return credentials;
+    }
+
+    public async Task<bool> DeleteModelProviderCredentialAsync(
+        string providerId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = Command(
+            connection,
+            "DELETE FROM ModelProviderCredentials WHERE ProviderId = $providerId;",
+            ("$providerId", providerId));
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1;
     }
 
     public async Task<JobEventRecord> AppendEventAsync(

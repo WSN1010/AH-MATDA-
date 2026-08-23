@@ -9,7 +9,7 @@ namespace Ajure.Infrastructure.Tests;
 public sealed class DirectModelGatewayTests
 {
     [Fact]
-    public async Task ListsOnlyProvidersWithApiKeys()
+    public async Task ListsModelsProvidedByResolver()
     {
         using var client = Client(static (_, _) =>
             throw new InvalidOperationException("No HTTP request was expected."));
@@ -19,30 +19,13 @@ public sealed class DirectModelGatewayTests
             Anthropic = Endpoint(string.Empty, "claude-test", "https://anthropic.example/v1/"),
             Gemini = Endpoint("gemini-key", "gemini-test", "https://gemini.example/v1beta/")
         };
-        var gateway = new DirectModelGateway(client, Options.Create(options));
+        var gateway = Gateway(client, options);
 
         var models = await gateway.ListModelsAsync(CancellationToken.None);
 
         Assert.Equal(
             ["openai:gpt-test", "gemini:gemini-test"],
             models.Select(static model => model.Id));
-    }
-
-    [Fact]
-    public async Task RejectsNonHttpsProviderEndpoints()
-    {
-        using var client = Client(static (_, _) =>
-            throw new InvalidOperationException("No HTTP request was expected."));
-        var options = new ModelProviderOptions
-        {
-            OpenAI = Endpoint("openai-key", "gpt-test", "http://openai.example/v1/")
-        };
-        var gateway = new DirectModelGateway(client, Options.Create(options));
-
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => gateway.ListModelsAsync(CancellationToken.None));
-
-        Assert.Equal("The OpenAI GPT base URL is invalid.", exception.Message);
     }
 
     [Fact]
@@ -82,7 +65,7 @@ public sealed class DirectModelGatewayTests
                 "gpt-test",
                 "https://gateway.example/openai/v1")
         };
-        var gateway = new DirectModelGateway(client, Options.Create(options));
+        var gateway = Gateway(client, options);
 
         var response = await gateway.RunAsync(Request("openai:gpt-test"), CancellationToken.None);
 
@@ -127,7 +110,7 @@ public sealed class DirectModelGatewayTests
                 "claude-test",
                 "https://gateway.example/anthropic/v1/")
         };
-        var gateway = new DirectModelGateway(client, Options.Create(options));
+        var gateway = Gateway(client, options);
 
         var response = await gateway.RunAsync(
             Request("anthropic:claude-test"),
@@ -183,7 +166,7 @@ public sealed class DirectModelGatewayTests
                 "gemini-test",
                 "https://gateway.example/gemini/v1beta/")
         };
-        var gateway = new DirectModelGateway(client, Options.Create(options));
+        var gateway = Gateway(client, options);
 
         var response = await gateway.RunAsync(
             Request("gemini:gemini-test"),
@@ -212,7 +195,7 @@ public sealed class DirectModelGatewayTests
                 "gpt-test",
                 "https://openai.example/v1/")
         };
-        var gateway = new DirectModelGateway(client, Options.Create(options));
+        var gateway = Gateway(client, options);
 
         var exception = await Assert.ThrowsAsync<ModelProviderException>(
             () => gateway.RunAsync(Request("openai:gpt-test"), CancellationToken.None));
@@ -234,7 +217,7 @@ public sealed class DirectModelGatewayTests
         {
             OpenAI = Endpoint("key", "gpt-test", "https://openai.example/v1/")
         };
-        var gateway = new DirectModelGateway(client, Options.Create(options));
+        var gateway = Gateway(client, options);
 
         var exception = await Assert.ThrowsAsync<InvalidDataException>(
             () => gateway.RunAsync(Request("openai:gpt-test"), CancellationToken.None));
@@ -254,7 +237,7 @@ public sealed class DirectModelGatewayTests
         {
             OpenAI = Endpoint("key", "gpt-test", "https://openai.example/v1/")
         };
-        var gateway = new DirectModelGateway(client, Options.Create(options));
+        var gateway = Gateway(client, options);
 
         await Assert.ThrowsAsync<TimeoutException>(
             () => gateway.RunAsync(
@@ -274,6 +257,11 @@ public sealed class DirectModelGatewayTests
             "system instructions",
             "user prompt",
             TimeSpan.FromSeconds(1));
+
+    private static DirectModelGateway Gateway(
+        HttpClient client,
+        ModelProviderOptions options) =>
+        new(client, Options.Create(options), new OptionsResolver(options));
 
     private static ModelEndpointOptions Endpoint(string apiKey, string model, string baseUrl) =>
         new()
@@ -301,5 +289,54 @@ public sealed class DirectModelGatewayTests
             HttpRequestMessage request,
             CancellationToken cancellationToken) =>
             send(request, cancellationToken);
+    }
+
+    private sealed class OptionsResolver(ModelProviderOptions options)
+        : IModelProviderResolver
+    {
+        public Task<IReadOnlyList<ResolvedModelProvider>> ListConfiguredAsync(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var providers = new List<ResolvedModelProvider>(3);
+            Add(
+                providers,
+                ModelProviderIds.OpenAI,
+                "OpenAI GPT",
+                options.OpenAI);
+            Add(
+                providers,
+                ModelProviderIds.Anthropic,
+                "Anthropic Claude",
+                options.Anthropic);
+            Add(
+                providers,
+                ModelProviderIds.Gemini,
+                "Google Gemini",
+                options.Gemini);
+            return Task.FromResult<IReadOnlyList<ResolvedModelProvider>>(providers);
+        }
+
+        private static void Add(
+            List<ResolvedModelProvider> providers,
+            string id,
+            string displayName,
+            ModelEndpointOptions endpoint)
+        {
+            if (string.IsNullOrWhiteSpace(endpoint.ApiKey))
+            {
+                return;
+            }
+
+            providers.Add(new ResolvedModelProvider(
+                id,
+                displayName,
+                endpoint.Model,
+                $"{id}:{endpoint.Model}",
+                endpoint.ApiKey,
+                new Uri(endpoint.BaseUrl.EndsWith('/')
+                    ? endpoint.BaseUrl
+                    : endpoint.BaseUrl + "/")));
+        }
     }
 }

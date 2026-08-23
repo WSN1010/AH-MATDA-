@@ -24,4 +24,8 @@
     <ProjectReference Include="..\..\src\Ajure.Infrastructure\Ajure.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
 </Project>

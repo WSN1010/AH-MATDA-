@@ -27,6 +27,7 @@ builder.Services.AddCors();
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.AddAjureStorage();
+builder.Services.AddAjureProviderCredentials(builder.Configuration);
 
 var app = builder.Build();
 
@@ -40,6 +41,106 @@ app.MapDefaultEndpoints();
 app.MapGet("/", () => Results.Ok(new { service = "Ajure.Api", status = "ok" }));
 
 var api = app.MapGroup("/api");
+
+var modelProviders = api.MapGroup("/model-providers");
+modelProviders.MapGet("", async (
+    HttpContext context,
+    ModelProviderRegistry registry,
+    CancellationToken cancellationToken) =>
+{
+    if (LocalSettingsAccess.Denied(context) is { } denied)
+    {
+        return denied;
+    }
+
+    var providers = await registry.ListStatusesAsync(cancellationToken).ConfigureAwait(false);
+    return Results.Ok(ModelProviderList(providers));
+});
+
+modelProviders.MapPut("/{providerId}", async (
+    string providerId,
+    SaveModelProviderRequest request,
+    HttpContext context,
+    ModelProviderRegistry registry,
+    CancellationToken cancellationToken) =>
+{
+    if (LocalSettingsAccess.Denied(context) is { } denied)
+    {
+        return denied;
+    }
+
+    if (!ModelProviderRegistry.IsSupported(providerId))
+    {
+        return ApiProblems.NotFound(
+            context,
+            "model_provider_not_found",
+            "The model provider was not found.");
+    }
+
+    var statuses = await registry.ListStatusesAsync(cancellationToken).ConfigureAwait(false);
+    if (!statuses.Single(status => status.Id == providerId).Editable)
+    {
+        return ApiProblems.Conflict(
+            context,
+            "provider_managed_by_environment",
+            "The model provider is managed by environment configuration.");
+    }
+
+    var apiKey = request.ApiKey?.Trim();
+    var model = request.Model?.Trim();
+    if (string.IsNullOrWhiteSpace(apiKey) || apiKey.Length > 4_096)
+    {
+        return ApiProblems.Validation(
+            context,
+            "invalid_model_api_key",
+            "The API key must contain 1 to 4,096 characters.");
+    }
+
+    if (string.IsNullOrWhiteSpace(model) || model.Length > 200)
+    {
+        return ApiProblems.Validation(
+            context,
+            "invalid_model_id",
+            "The model ID must contain 1 to 200 characters.");
+    }
+
+    var saved = await registry
+        .SaveLocalAsync(providerId, apiKey, model, cancellationToken)
+        .ConfigureAwait(false);
+    return Results.Ok(ModelProvider(saved));
+});
+
+modelProviders.MapDelete("/{providerId}", async (
+    string providerId,
+    HttpContext context,
+    ModelProviderRegistry registry,
+    CancellationToken cancellationToken) =>
+{
+    if (LocalSettingsAccess.Denied(context) is { } denied)
+    {
+        return denied;
+    }
+
+    if (!ModelProviderRegistry.IsSupported(providerId))
+    {
+        return ApiProblems.NotFound(
+            context,
+            "model_provider_not_found",
+            "The model provider was not found.");
+    }
+
+    var statuses = await registry.ListStatusesAsync(cancellationToken).ConfigureAwait(false);
+    if (!statuses.Single(status => status.Id == providerId).Editable)
+    {
+        return ApiProblems.Conflict(
+            context,
+            "provider_managed_by_environment",
+            "The model provider is managed by environment configuration.");
+    }
+
+    await registry.DeleteLocalAsync(providerId, cancellationToken).ConfigureAwait(false);
+    return Results.NoContent();
+});
 
 api.MapPost("/projects", async (
     CreateProjectRequest request,
@@ -627,6 +728,23 @@ api.MapPost("/spec-versions/{versionId:guid}/export", async (
 });
 
 app.Run();
+
+static ModelProviderListResponse ModelProviderList(
+    IReadOnlyList<ModelProviderStatus> providers) =>
+    new(
+        RequiredCount: 2,
+        ConfiguredCount: providers.Count(static provider => provider.Configured),
+        providers.Select(ModelProvider).ToArray());
+
+static ModelProviderResponse ModelProvider(ModelProviderStatus provider) =>
+    new(
+        provider.Id,
+        provider.DisplayName,
+        provider.Configured,
+        provider.Source,
+        provider.Model,
+        provider.Editable,
+        provider.ErrorCode);
 
 static async Task<IResult> QueueJobAsync(
     JobKind kind,

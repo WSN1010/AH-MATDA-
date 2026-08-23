@@ -22,33 +22,34 @@ public sealed class ModelProviderException(
 
 public sealed class DirectModelGateway : IModelGateway
 {
-    private const string OpenAiProvider = "openai";
-    private const string AnthropicProvider = "anthropic";
-    private const string GeminiProvider = "gemini";
     private readonly HttpClient _httpClient;
     private readonly ModelProviderOptions _options;
+    private readonly IModelProviderResolver _providerResolver;
 
     public DirectModelGateway(
         HttpClient httpClient,
-        IOptions<ModelProviderOptions> options)
+        IOptions<ModelProviderOptions> options,
+        IModelProviderResolver providerResolver)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(providerResolver);
 
         _httpClient = httpClient;
         _options = options.Value;
+        _providerResolver = providerResolver;
     }
 
-    public Task<IReadOnlyList<ModelDescriptor>> ListModelsAsync(
+    public async Task<IReadOnlyList<ModelDescriptor>> ListModelsAsync(
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        IReadOnlyList<ModelDescriptor> models = ConfiguredProviders()
+        var providers = await _providerResolver.ListConfiguredAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return providers
             .Select(static provider => new ModelDescriptor(
                 provider.ModelId,
                 $"{provider.DisplayName} ({provider.Model})"))
             .ToArray();
-        return Task.FromResult(models);
     }
 
     public async Task<ModelResponse> RunAsync(
@@ -57,7 +58,9 @@ public sealed class DirectModelGateway : IModelGateway
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var provider = ConfiguredProviders()
+        var providers = await _providerResolver.ListConfiguredAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var provider = providers
             .SingleOrDefault(candidate => candidate.ModelId == request.ModelId)
             ?? throw new InvalidOperationException(
                 $"Model '{request.ModelId}' is not configured.");
@@ -67,16 +70,16 @@ public sealed class DirectModelGateway : IModelGateway
 
         try
         {
-            var (content, responseId) = provider.Name switch
+            var (content, responseId) = provider.Id switch
             {
-                OpenAiProvider => await RunOpenAiAsync(provider, request, timeout.Token)
+                ModelProviderIds.OpenAI => await RunOpenAiAsync(provider, request, timeout.Token)
                     .ConfigureAwait(false),
-                AnthropicProvider => await RunAnthropicAsync(provider, request, timeout.Token)
+                ModelProviderIds.Anthropic => await RunAnthropicAsync(provider, request, timeout.Token)
                     .ConfigureAwait(false),
-                GeminiProvider => await RunGeminiAsync(provider, request, timeout.Token)
+                ModelProviderIds.Gemini => await RunGeminiAsync(provider, request, timeout.Token)
                     .ConfigureAwait(false),
                 _ => throw new InvalidOperationException(
-                    $"Model provider '{provider.Name}' is not supported.")
+                    $"Model provider '{provider.Id}' is not supported.")
             };
             return new ModelResponse(
                 request.Role,
@@ -94,7 +97,7 @@ public sealed class DirectModelGateway : IModelGateway
     }
 
     private async Task<(string Content, string ResponseId)> RunOpenAiAsync(
-        ConfiguredProvider provider,
+        ResolvedModelProvider provider,
         ModelRequest request,
         CancellationToken cancellationToken)
     {
@@ -112,10 +115,10 @@ public sealed class DirectModelGateway : IModelGateway
             });
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", provider.ApiKey);
 
-        using var document = await SendAsync(message, provider.Name, cancellationToken)
+        using var document = await SendAsync(message, provider.Id, cancellationToken)
             .ConfigureAwait(false);
         var root = document.RootElement;
-        EnsureObject(root, provider.Name);
+        EnsureObject(root, provider.Id);
         if (!root.TryGetProperty("choices", out var choices)
             || choices.ValueKind != JsonValueKind.Array
             || choices.GetArrayLength() == 0
@@ -124,15 +127,15 @@ public sealed class DirectModelGateway : IModelGateway
             || !responseMessage.TryGetProperty("content", out var responseContent)
             || responseContent.ValueKind != JsonValueKind.String)
         {
-            throw InvalidResponse(provider.Name);
+            throw InvalidResponse(provider.Id);
         }
 
         var content = responseContent.GetString();
-        return (RequiredContent(content, provider.Name), ResponseId(root));
+        return (RequiredContent(content, provider.Id), ResponseId(root));
     }
 
     private async Task<(string Content, string ResponseId)> RunAnthropicAsync(
-        ConfiguredProvider provider,
+        ResolvedModelProvider provider,
         ModelRequest request,
         CancellationToken cancellationToken)
     {
@@ -151,14 +154,14 @@ public sealed class DirectModelGateway : IModelGateway
         message.Headers.Add("x-api-key", provider.ApiKey);
         message.Headers.Add("anthropic-version", "2023-06-01");
 
-        using var document = await SendAsync(message, provider.Name, cancellationToken)
+        using var document = await SendAsync(message, provider.Id, cancellationToken)
             .ConfigureAwait(false);
         var root = document.RootElement;
-        EnsureObject(root, provider.Name);
+        EnsureObject(root, provider.Id);
         if (!root.TryGetProperty("content", out var contentBlocks)
             || contentBlocks.ValueKind != JsonValueKind.Array)
         {
-            throw InvalidResponse(provider.Name);
+            throw InvalidResponse(provider.Id);
         }
 
         var content = string.Concat(
@@ -173,11 +176,11 @@ public sealed class DirectModelGateway : IModelGateway
                     && text.ValueKind == JsonValueKind.String
                         ? text.GetString()
                         : null));
-        return (RequiredContent(content, provider.Name), ResponseId(root));
+        return (RequiredContent(content, provider.Id), ResponseId(root));
     }
 
     private async Task<(string Content, string ResponseId)> RunGeminiAsync(
-        ConfiguredProvider provider,
+        ResolvedModelProvider provider,
         ModelRequest request,
         CancellationToken cancellationToken)
     {
@@ -205,10 +208,10 @@ public sealed class DirectModelGateway : IModelGateway
             });
         message.Headers.Add("x-goog-api-key", provider.ApiKey);
 
-        using var document = await SendAsync(message, provider.Name, cancellationToken)
+        using var document = await SendAsync(message, provider.Id, cancellationToken)
             .ConfigureAwait(false);
         var root = document.RootElement;
-        EnsureObject(root, provider.Name);
+        EnsureObject(root, provider.Id);
         if (!root.TryGetProperty("candidates", out var candidates)
             || candidates.ValueKind != JsonValueKind.Array
             || candidates.GetArrayLength() == 0
@@ -217,7 +220,7 @@ public sealed class DirectModelGateway : IModelGateway
             || !candidateContent.TryGetProperty("parts", out var parts)
             || parts.ValueKind != JsonValueKind.Array)
         {
-            throw InvalidResponse(provider.Name);
+            throw InvalidResponse(provider.Id);
         }
 
         var content = string.Concat(
@@ -228,7 +231,7 @@ public sealed class DirectModelGateway : IModelGateway
                     && text.ValueKind == JsonValueKind.String
                         ? text.GetString()
                         : null));
-        return (RequiredContent(content, provider.Name), ResponseId(root));
+        return (RequiredContent(content, provider.Id), ResponseId(root));
     }
 
     private async Task<JsonDocument> SendAsync(
@@ -311,56 +314,4 @@ public sealed class DirectModelGateway : IModelGateway
         return Guid.NewGuid().ToString("N");
     }
 
-    private List<ConfiguredProvider> ConfiguredProviders()
-    {
-        var providers = new List<ConfiguredProvider>(3);
-        AddProvider(providers, OpenAiProvider, "OpenAI GPT", _options.OpenAI);
-        AddProvider(providers, AnthropicProvider, "Anthropic Claude", _options.Anthropic);
-        AddProvider(providers, GeminiProvider, "Google Gemini", _options.Gemini);
-        return providers;
-    }
-
-    private static void AddProvider(
-        ICollection<ConfiguredProvider> providers,
-        string name,
-        string displayName,
-        ModelEndpointOptions options)
-    {
-        if (string.IsNullOrWhiteSpace(options.ApiKey))
-        {
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(options.Model))
-        {
-            throw new InvalidOperationException(
-                $"A model ID is required when the {displayName} API key is configured.");
-        }
-
-        var baseUrl = options.BaseUrl.EndsWith('/')
-            ? options.BaseUrl
-            : options.BaseUrl + "/";
-        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri)
-            || baseUri.Scheme != Uri.UriSchemeHttps)
-        {
-            throw new InvalidOperationException(
-                $"The {displayName} base URL is invalid.");
-        }
-
-        providers.Add(new ConfiguredProvider(
-            name,
-            displayName,
-            options.Model,
-            $"{name}:{options.Model}",
-            options.ApiKey,
-            baseUri));
-    }
-
-    private sealed record ConfiguredProvider(
-        string Name,
-        string DisplayName,
-        string Model,
-        string ModelId,
-        string ApiKey,
-        Uri BaseUri);
 }

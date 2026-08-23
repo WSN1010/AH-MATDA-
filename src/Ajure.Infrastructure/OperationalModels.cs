@@ -120,6 +120,12 @@ public sealed record PoisonJobMessage(
     string ErrorType,
     DateTimeOffset FailedAt);
 
+public sealed record ModelProviderCredentialRecord(
+    string ProviderId,
+    string ProtectedApiKey,
+    string Model,
+    DateTimeOffset UpdatedAt);
+
 public sealed record JobEventRecord(
     Guid JobId,
     long Sequence,

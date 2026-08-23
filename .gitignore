@@ -483,3 +483,7 @@ $RECYCLE.BIN/
 
 # Local Aspire resources
 src/Ajure.AppHost/.data/
+
+# Ajure local credentials and default database
+.ajure-keys/
+ajure.db*
