@@ -82,7 +82,8 @@ Home
 │     │  ├─ Validation
 │     │  └─ Traceability
 │     └─ History
-└─ Account / Data controls
+└─ Settings
+   └─ Model providers
 ```
 
 ## 4. 전역 내비게이션
@@ -91,7 +92,7 @@ Home
 
 - 좌측 상단: 아주르 워드마크
 - 중앙: 현재 프로젝트명 / Spec Version / 상태
-- 우측: History, 데이터 설정, 사용자 메뉴
+- 우측: Projects, 모델 설정
 - 프로젝트 내부 상단에 4단계 Rail:
   - `01 결정`
   - `02 명세`
@@ -381,6 +382,37 @@ Ready일 때 우측 Inspector와 상단 상태 영역에서 활성화한다.
 3. “이 명세를 기준으로 전체 구현하고 검증까지 완료해”라는 단일 요청을 사용한다.
 
 아주르가 직접 구현하거나 저장소에 접근한 것처럼 표현하지 않는다.
+
+## 5.10 Model Providers - `/settings/providers`
+
+### 목적
+
+로컬 사용자가 셸이나 설정 파일을 열지 않고 OpenAI, Anthropic, Gemini 자격증명을 내 PC에 연결한다.
+
+### 레이아웃
+
+- 상단 `모델 연결 상태` Rail에서 `구성됨 n / 필요 2`를 텍스트와 연결선으로 표시한다.
+- 아래에 OpenAI GPT, Anthropic Claude, Google Gemini를 동일한 공급자 Bay로 배치한다.
+- 각 Bay는 공급자명, 구성 상태, 모델 ID, 비밀번호형 API 키 입력, 저장/제거 행동을 가진다.
+- API 키는 저장 후 즉시 입력란에서 지우며 다시 표시하거나 일부 문자를 힌트로 노출하지 않는다.
+- 환경 변수/user-secrets 공급자는 `운영자 관리` 배지를 표시하고 입력과 제거 행동을 비활성화한다.
+
+### 상태
+
+- Loading: Rail과 공급자 Bay 3개의 고정 skeleton
+- Empty: `모델 2개를 연결해야 생성할 수 있습니다.`
+- Partial: 현재 수와 남은 수를 함께 표시
+- Ready: `모델 연결 준비 완료`와 구성된 공급자명을 표시
+- Saving: 해당 Bay의 입력을 잠그고 `저장 중`
+- Success: 토스트에만 의존하지 않고 Bay 상태를 `연결됨`으로 갱신
+- Error: 입력을 유지하고 Problem Details의 행동 가능한 메시지를 표시
+- Offline/Mock: 목 저장으로 대체하지 않고 `localhost API를 먼저 실행하세요.` 표시
+
+### 반응형
+
+- `>= 1024px`: 연결 Rail 아래에 공급자 Bay 3열
+- `< 1024px`: 1열로 쌓고 저장 행동을 각 Bay 하단에 유지
+- 360px에서도 새 키 표시 토글, 모델 입력, 저장, 제거를 키보드와 터치로 완료할 수 있어야 한다.
 
 ## 6. 공통 컴포넌트
 

@@ -11,7 +11,7 @@
 
 1. [AGENTS.md](AGENTS.md) — 작업 규칙
 2. [TRD.md](TRD.md) §2~§10 — 아키텍처, MAF 워크플로, 직접 모델 API, API, SQLite 저장소
-3. [PRD.md](PRD.md) §7 — FR-001~FR-016
+3. [PRD.md](PRD.md) §7 — FR-001~FR-017
 4. [EVALUATION.md](EVALUATION.md) — 점수 산식, Hard Gate, 회귀 규칙
 5. [DOCUMENT-SPEC.md](DOCUMENT-SPEC.md), [AI-FILE-SPEC.md](AI-FILE-SPEC.md) — 렌더링 출력 계약
 
@@ -106,6 +106,14 @@ TRD §5.4를 개발 호스트에서 수행한다. **이 게이트를 통과하�
 - Azure 계정, GitHub Copilot 구독, Docker를 필수로 요구하지 않음
 - **DoD**: 새 checkout에서 Fake 모드 E2E 1회 + 구성된 실제 모델 E2E 1회 성공
 
+### B8. 로컬 모델 공급자 설정
+
+- TRD §9의 공급자 설정 GET/PUT/DELETE와 loopback/Origin 제한 구현
+- 로컬 키는 공유 Data Protection key ring으로 보호해 SQLite에 저장하고 API와 Worker가 재시작 후에도 공유
+- 환경 변수/user-secrets가 로컬 저장값보다 우선하며 UI 변경은 `provider_managed_by_environment`로 거부
+- API 응답, 로그, Telemetry, SQLite 평문에 키가 없는지 회귀 테스트
+- **DoD**: 공급자 2개 저장 → 프로세스 재시작 → Worker 모델 목록 확인 → 제거까지 통합 테스트 통과
+
 ## 4. API 계약 관리
 
 - TRD §9가 유일한 계약이다. 프론트는 이 표만 보고 개발한다.
@@ -144,8 +152,8 @@ dotnet run --project src/Ajure.AppHost          # 모델 없이
 
 ## 8. 완료 정의
 
-- [ ] B0~B6 전체 DoD 통과
-- [ ] AC-001~AC-022 중 백엔드 책임 항목 검증 가능
+- [ ] B0~B8 전체 DoD 통과
+- [ ] AC-001~AC-023 중 백엔드 책임 항목 검증 가능
 - [ ] B7 셀프호스트 새 checkout 검증 통과
 
 ## 9. 공급자 Probe 기록 (B1 재수행 후 작성)

@@ -154,7 +154,8 @@ Draft
 
 - 세 공급자를 동시에 구성할 수 있고, 키와 모델 ID가 모두 있는 공급자만 사용 가능 목록에 포함한다.
 - 내부 모델 ID는 `openai:{model}`, `anthropic:{model}`, `gemini:{model}`처럼 공급자 한정 형식으로 저장한다.
-- API 키는 서버 환경 변수 또는 .NET user-secrets에서만 읽고 애플리케이션 데이터나 Telemetry에 저장하지 않는다.
+- API 키는 환경 변수, .NET user-secrets 또는 암호화된 로컬 자격증명 저장소에서 읽고 원문을 애플리케이션 데이터나 Telemetry에 저장하지 않는다.
+- 환경 변수와 user-secrets가 로컬 설정값보다 우선하며, 해당 공급자는 UI에서 운영자 관리 상태로 잠근다.
 - 공급자별 공식 HTTPS 엔드포인트와 인증 헤더를 사용한다.
 - 시작 시 구성된 모델이 2개 미만이면 실제 모델 Job을 `model_diversity_unavailable`로 실패시킨다.
 - 작성 및 Reviewer 역할마다 독립 요청 ID를 만들고 공급자, 모델 ID, 요청 ID를 실행 기록에 저장한다.
@@ -189,7 +190,7 @@ MVP의 작성 및 평가는 구성된 직접 API를 사용하며, 평가 다양�
 
 실제 모델 워크플로를 시작하기 전에 개발 호스트에서 다음 Probe를 통과해야 한다.
 
-1. 환경 변수 또는 user-secrets에 OpenAI, Anthropic, Gemini 중 두 공급자 이상의 키와 모델 ID를 설정한다.
+1. 환경 변수, user-secrets 또는 로컬 설정 화면에 OpenAI, Anthropic, Gemini 중 두 공급자 이상의 키와 모델 ID를 설정한다.
 2. `ListModelsAsync`에서 공급자 한정 모델 ID 2개 이상을 확인한다.
 3. 구성된 모든 공급자에 짧은 독립 요청을 동시에 보내 응답과 요청 ID를 확인한다.
 4. 각 요청에 system/developer 지침이 적용되고 도구 정의가 전송되지 않는지 계약 테스트로 확인한다.
@@ -347,6 +348,19 @@ JobEvent
 | `GET` | `/api/validation-runs/{runId}` | 점수/게이트/Finding |
 | `GET` | `/api/spec-versions/{versionId}/diff/{baseId}` | 버전 의미 diff |
 | `POST` | `/api/spec-versions/{versionId}/export` | Ready ZIP 생성 |
+| `GET` | `/api/model-providers` | 공급자별 구성 상태와 모델 ID 조회 |
+| `PUT` | `/api/model-providers/{providerId}` | 로컬 API 키와 모델 ID 저장 |
+| `DELETE` | `/api/model-providers/{providerId}` | 로컬 API 키와 모델 ID 제거 |
+
+### 로컬 공급자 설정 계약
+
+- `providerId`는 `openai`, `anthropic`, `gemini`만 허용한다.
+- `GET` 응답은 `requiredCount`, `configuredCount`, `providers[]`를 포함한다.
+- 각 공급자 항목은 `id`, `displayName`, `configured`, `source(local|environment)`, `model`, `editable`만 반환하고 API 키 또는 일부 문자를 반환하지 않는다.
+- `PUT` 본문은 `apiKey`, `model`이며 둘 다 공백이 아니어야 한다. 저장 성공 후 키 입력값을 다시 응답하지 않는다.
+- 환경 변수 또는 user-secrets로 관리되는 공급자의 `PUT`/`DELETE`는 `409 provider_managed_by_environment`로 거부한다.
+- 설정 변경 엔드포인트는 loopback 요청에만 허용하고 브라우저 Origin도 loopback인지 확인한다. 원격 요청은 `403 local_access_required`로 거부한다.
+- 프론트는 모델 설정 요청을 목 데이터로 성공 처리하지 않는다. localhost API에 연결할 수 없으면 저장하지 않고 명시적 오류를 표시한다.
 
 ### 오류 형식
 
@@ -369,6 +383,7 @@ JobEvent
 - WAL 모드, foreign key, busy timeout을 활성화한다.
 - Project, SpecVersion, Decision, Job, JobEvent, Artifact, ValidationRun은 JSON payload와 조회용 키를 저장한다.
 - Markdown 산출물, Export ZIP, 평가 리포트는 Blob 테이블의 BLOB 열에 저장한다.
+- 로컬 모델 자격증명은 API와 Worker가 공유하는 ASP.NET Core Data Protection으로 보호한 뒤 전용 테이블에 저장한다. Data Protection key ring은 SQLite 파일 옆의 앱 전용 디렉터리를 사용한다.
 - 스키마 생성은 멱등이어야 하며 애플리케이션 시작 전에 완료한다.
 
 ### SQLite Job 큐
@@ -385,7 +400,10 @@ SQLite는 단일 호스트·단일 Worker MVP에 맞춘다. 다중 Worker 또는
 
 - 인증은 MVP에서 GitHub OAuth/OIDC를 우선한다.
 - 사용자 로그인용 OAuth 토큰과 모델 공급자 API 키를 분리한다.
-- 모델 API 키는 서버 환경 변수 또는 .NET user-secrets에서 읽고 SQLite에 저장하지 않는다.
+- 모델 API 키는 환경 변수, .NET user-secrets 또는 암호화된 로컬 자격증명 저장소에서 읽는다.
+- 로컬 API 키 원문은 SQLite, API 응답, 브라우저 저장소, 로그, Telemetry에 남기지 않는다.
+- 환경 변수와 user-secrets가 로컬 저장값보다 우선한다.
+- 자격증명 설정 API는 localhost 전용이며 허용된 loopback Origin 외의 브라우저 요청을 거부한다.
 - 사용자의 OAuth 토큰을 모델 호출 자격증명으로 재사용하지 않는다.
 - 공급자 API 통신은 HTTPS만 허용한다.
 - 사용자 입력은 프로젝트 소유자 기준으로 격리한다.
@@ -437,7 +455,7 @@ AppHost는 세 프로세스를 한 번에 시작하는 개발 편의 기능이�
 ### 14.2 필수 운영 입력
 
 - 쓰기 가능한 영속 데이터 디렉터리와 `AJURE_DATA_PATH`
-- OpenAI, Anthropic, Gemini 중 두 공급자 이상의 API 키와 모델 ID
+- OpenAI, Anthropic, Gemini 중 두 공급자 이상의 API 키와 모델 ID. 로컬 설정 화면 또는 환경 변수/user-secrets 중 하나를 사용한다.
 - API와 Worker용 .NET 런타임
 - Web 빌드용 Node.js 또는 미리 빌드된 정적 파일
 - 외부 공개 시 TLS와 인증을 담당하는 운영자 선택 reverse proxy
@@ -445,9 +463,9 @@ AppHost는 세 프로세스를 한 번에 시작하는 개발 편의 기능이�
 ### 14.3 실행 흐름
 
 1. 저장소를 clone하고 .NET/Node.js 의존성을 복원한다.
-2. SQLite 절대 경로와 공급자 키/모델 ID를 환경 변수 또는 user-secrets로 설정한다.
-3. API와 Worker를 같은 `AJURE_DATA_PATH`로 실행한다.
-4. Web을 실행하거나 정적 빌드를 선택한 웹 서버에서 제공한다.
+2. SQLite 절대 경로를 설정하고 API와 Worker를 같은 `AJURE_DATA_PATH`로 실행한다.
+3. Web을 실행하거나 정적 빌드를 선택한 웹 서버에서 제공한다.
+4. 공급자 키/모델 ID를 로컬 설정 화면 또는 환경 변수/user-secrets로 설정한다.
 5. Fake E2E와 구성된 실제 공급자 Probe를 실행한다.
 6. 외부 공개 시 TLS, 인증, 데이터 volume 백업을 구성한다.
 
@@ -536,6 +554,7 @@ AppHost는 세 프로세스를 한 번에 시작하는 개발 편의 기능이�
 | TD-009 | 서로 다른 모델 ID 2개 이상의 독립 평가와 결정적 Finding 집계 | 단일 모델 자기확증을 줄이고 재현 가능한 점수와 게이트 제공 |
 | TD-010 | AppHost는 선택적 개발 실행기로만 사용하고 운영은 표준 프로세스로 실행 | 특정 클라우드와 오케스트레이터 종속 제거 |
 | TD-011 | OpenAI, Anthropic, Gemini 공식 HTTPS API를 BCL `HttpClient`로 직접 호출 | 공급자 SDK와 Copilot runtime 종속 최소화 |
+| TD-012 | 로컬 UI 자격증명은 공유 Data Protection key ring으로 암호화해 SQLite에 저장 | 별도 클라우드 비밀 저장소 없이 API와 Worker가 재시작 후에도 안전하게 공유 |
 
 ## 18. 구현 전 검증 항목
 
