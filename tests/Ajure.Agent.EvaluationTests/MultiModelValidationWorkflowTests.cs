@@ -29,7 +29,7 @@ public sealed class MultiModelValidationWorkflowTests
         Assert.Equal("model-a", product.ModelId);
         Assert.Equal(2, product.SessionIds.Count);
         Assert.Empty(result.InvalidEnvelopeCodes);
-        Assert.True(result.CopilotStagesCompleted);
+        Assert.True(result.ProviderStagesCompleted);
     }
 
     [Fact]
@@ -47,7 +47,7 @@ public sealed class MultiModelValidationWorkflowTests
 
         Assert.Single(result.InvalidEnvelopeCodes);
         Assert.Null(result.Simulation);
-        Assert.False(result.CopilotStagesCompleted);
+        Assert.False(result.ProviderStagesCompleted);
         Assert.Equal(2, gateway.Calls(AgentRole.ProductReviewer));
         Assert.Equal(0, gateway.Calls(AgentRole.ImplementationSimulator));
     }

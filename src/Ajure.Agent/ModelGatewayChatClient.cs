@@ -8,7 +8,7 @@ internal sealed class ModelGatewayChatClient(
     ModelRequest request) : IChatClient
 {
     private readonly ChatClientMetadata _metadata =
-        new("github.copilot", defaultModelId: request.ModelId);
+        new("ajure.direct-api", defaultModelId: request.ModelId);
     private ModelResponse? _lastResponse;
 
     public ModelResponse? LastResponse => Volatile.Read(ref _lastResponse);

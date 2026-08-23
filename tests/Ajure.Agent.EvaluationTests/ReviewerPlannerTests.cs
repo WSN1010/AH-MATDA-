@@ -54,6 +54,16 @@ public sealed class ReviewerPlannerTests
     }
 
     [Fact]
+    public void ResolvePoolUsesAllAvailableModelsWhenNoPoolIsConfigured()
+    {
+        var pool = ReviewerPlanner.ResolvePool(AvailableModels, []);
+
+        Assert.Equal(
+            ["gpt-5.6-sol", "claude-opus-5", "unused-model"],
+            pool);
+    }
+
+    [Fact]
     public void ResolvePoolRejectsSingleAvailableModel()
     {
         var configured = new[] { TwoModels[0], "missing-model" };

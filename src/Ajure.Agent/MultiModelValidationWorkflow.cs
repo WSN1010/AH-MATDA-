@@ -56,7 +56,7 @@ public sealed record MultiModelValidationResult
 
     public SimulationExecution? Simulation { get; init; }
 
-    public bool CopilotStagesCompleted =>
+    public bool ProviderStagesCompleted =>
         InvalidEnvelopeCodes.Count == 0
         && (!TieBreakUsed || TieBreakResolved)
         && Simulation?.Succeeded == true;

@@ -61,6 +61,53 @@
 - **SQLite**: 프로젝트, Job 큐, 이벤트, 산출물을 외부 인프라 없이 저장한다.
 - **.NET Aspire**: 선택적인 로컬 개발 실행기이며 운영 필수 요소가 아니다.
 
+## 로컬 실행
+
+필요한 도구는 .NET 10 SDK, Node.js, npm이다. Docker, Azure 계정, GitHub Copilot 로그인은 필요하지 않다.
+
+```powershell
+npm ci --prefix src\Ajure.Web
+$env:AJURE_FAKE_MODEL = "true"
+dotnet run --project src\Ajure.AppHost
+```
+
+Fake 모드는 외부 모델을 호출하지 않으며 전체 생성·검증·ZIP 내보내기 흐름을 로컬에서 확인할 때 사용한다. AppHost는 API와 Worker가 함께 사용하는 SQLite 파일을 `src\Ajure.AppHost\.data\ajure.db`에 만든다.
+
+### 실제 모델 API 설정
+
+API 키는 브라우저나 저장소에 저장하지 않고 Worker의 환경 변수 또는 .NET user-secrets로만 주입한다. Ready 판정에는 서로 다른 공급자 모델이 최소 2개 필요하며, 세 공급자를 모두 함께 설정할 수 있다.
+
+```powershell
+dotnet user-secrets --project src\Ajure.Worker set OPENAI_API_KEY "<openai-key>"
+dotnet user-secrets --project src\Ajure.Worker set ANTHROPIC_API_KEY "<anthropic-key>"
+dotnet user-secrets --project src\Ajure.Worker set GEMINI_API_KEY "<gemini-key>"
+
+$env:AJURE_FAKE_MODEL = "false"
+dotnet run --project src\Ajure.AppHost
+```
+
+| 공급자 | API 키 | 모델 재정의 | 기본 모델 |
+|---|---|---|---|
+| OpenAI GPT | `OPENAI_API_KEY` | `AJURE_OPENAI_MODEL` | `gpt-5.4-mini` |
+| Anthropic Claude | `ANTHROPIC_API_KEY` | `AJURE_ANTHROPIC_MODEL` | `claude-sonnet-5` |
+| Google Gemini | `GEMINI_API_KEY` | `AJURE_GEMINI_MODEL` | `gemini-2.5-pro` |
+
+연결만 확인하려면 키를 설정한 뒤 다음 명령을 실행한다. 이 Probe는 구성된 모든 공급자에 실제 API 요청을 보낸다.
+
+```powershell
+dotnet run --project src\Ajure.Worker -- --model-probe
+```
+
+API와 Worker를 AppHost 없이 따로 실행하면 둘 다 사용자 로컬 앱 데이터의 `Ajure\ajure.db`를 기본으로 사용한다. 서비스나 컨테이너에서는 두 프로세스에 동일한 절대 `AJURE_DATA_PATH`를 지정한다. SQLite 기반 MVP는 단일 호스트와 단일 Worker를 대상으로 한다.
+
+## 검증
+
+```powershell
+dotnet build Ajure.slnx
+dotnet test Ajure.slnx
+npm run build --prefix src\Ajure.Web
+```
+
 ## 문서
 
 - [IDEATION.md](IDEATION.md): 아이디어와 제품 방향
@@ -79,4 +126,8 @@
 
 ## 현재 상태
 
-기획이 확정되어 **구현 단계**에 진입했다. Azure와 GitHub Copilot SDK를 제거하고 SQLite 및 OpenAI/Anthropic/Gemini 직접 API를 사용하는 MIT 라이선스 셀프호스트 구조로 전환 중이다. 2인(프론트/백) 분담과 규칙은 구현 문서를 따른다.
+Azure와 GitHub Copilot SDK 없이 SQLite 및 OpenAI/Anthropic/Gemini 직접 API로 실행되는 MIT 라이선스 셀프호스트 구조다. 2인(프론트/백) 분담과 규칙은 구현 문서를 따른다.
+
+## 라이선스
+
+[MIT](LICENSE)

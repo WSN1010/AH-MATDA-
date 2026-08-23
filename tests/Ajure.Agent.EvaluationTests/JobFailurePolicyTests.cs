@@ -1,7 +1,7 @@
+using System.Net;
 using System.Text.Json;
 using Ajure.Agent;
 using Ajure.Infrastructure;
-using Azure;
 
 namespace Ajure.Agent.EvaluationTests;
 
@@ -26,12 +26,29 @@ public sealed class JobFailurePolicyTests
     }
 
     [Fact]
-    public void RateLimitedStorageOperationIsRetried()
+    public void RateLimitedModelProviderIsRetried()
     {
-        var failure = JobFailurePolicy.Classify(new RequestFailedException(429, "rate limited"));
+        var failure = JobFailurePolicy.Classify(
+            new ModelProviderException(
+                "openai",
+                HttpStatusCode.TooManyRequests,
+                retryable: true));
 
-        Assert.Equal("storage_transient", failure.Code);
+        Assert.Equal("model_provider_transient", failure.Code);
         Assert.True(failure.Retryable);
+    }
+
+    [Fact]
+    public void AuthenticationFailureIsNotRetried()
+    {
+        var failure = JobFailurePolicy.Classify(
+            new ModelProviderException(
+                "anthropic",
+                HttpStatusCode.Unauthorized,
+                retryable: false));
+
+        Assert.Equal("model_provider_rejected", failure.Code);
+        Assert.False(failure.Retryable);
     }
 
     [Fact]

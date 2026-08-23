@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Ajure.Agent;
-using Azure;
+using Microsoft.Data.Sqlite;
 
 namespace Ajure.Infrastructure;
 
@@ -30,13 +30,19 @@ public static class JobFailurePolicy
                 "dependency_unavailable",
                 "A required dependency was unavailable.",
                 Retryable: true),
-            RequestFailedException request when request.Status is 408 or 429 or >= 500 => new(
+            ModelProviderException provider => new(
+                provider.Retryable ? "model_provider_transient" : "model_provider_rejected",
+                provider.Retryable
+                    ? "The assigned model provider temporarily rejected the request."
+                    : "The assigned model provider rejected the request.",
+                provider.Retryable),
+            SqliteException sqlite when sqlite.SqliteErrorCode is 5 or 6 => new(
                 "storage_transient",
-                "Storage temporarily rejected the operation.",
+                "SQLite is temporarily busy or locked.",
                 Retryable: true),
-            RequestFailedException => new(
+            SqliteException => new(
                 "storage_failure",
-                "Storage rejected the operation.",
+                "SQLite rejected the operation.",
                 Retryable: false),
             InvalidOperationException => new(
                 "job_invalid_operation",

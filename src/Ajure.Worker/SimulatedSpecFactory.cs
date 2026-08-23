@@ -232,7 +232,7 @@ public static class SimulatedSpecFactory
         [
             "ProjectSpec is the single semantic source of truth.",
             "A Ready decision requires at least two distinct model IDs.",
-            "Docker is not used; local orchestration uses .NET Aspire and later deployment targets Azure."
+            "The application is self-hosted with SQLite and user-supplied model API keys."
         ],
         StateMatrix =
         [
@@ -285,18 +285,18 @@ public static class SimulatedSpecFactory
             Constraints =
             [
                 "Backend services use .NET 10",
-                "Local orchestration uses .NET Aspire without Docker",
-                "Azure deployment is deferred until the backend and frontend are integrated"
+                "Persistent state and jobs use one SQLite file",
+                "Model calls use direct OpenAI, Anthropic, and Gemini HTTPS APIs"
             ],
-            MustTechnologies = [".NET Aspire", "Azure Storage", "Microsoft Agent Framework", "GitHub Copilot SDK"],
-            ForbiddenChoices = ["Docker", "Model-generated product source code", "Logging prompt or model response bodies"],
-            Architecture = "An ASP.NET Core API queues jobs in Azure Storage; an Aspire-orchestrated Worker runs isolated agents, validates ProjectSpec, and writes immutable artifacts.",
+            MustTechnologies = ["SQLite", "Microsoft Agent Framework", "IChatClient"],
+            ForbiddenChoices = ["Azure services", "GitHub Copilot SDK", "Model-generated product source code", "Logging prompt or model response bodies"],
+            Architecture = "An ASP.NET Core API queues jobs in SQLite; a Worker runs isolated agents through direct model APIs, validates ProjectSpec, and writes immutable artifacts.",
             TrustBoundaries =
             [
                 "Client input to the API",
                 "Queue messages to the Worker",
                 "Untrusted model JSON to strict parsers",
-                "Worker output to Azure Storage"
+                "Worker output to SQLite"
             ],
             Components =
             [
@@ -304,14 +304,14 @@ public static class SimulatedSpecFactory
                 {
                     Name = "Ajure API",
                     Responsibility = "Validate requests, own HTTP and SSE contracts, and enqueue identifier-only jobs.",
-                    Dependencies = ["Azure Storage"],
+                    Dependencies = ["SQLite"],
                     RequirementIds = ["FR-001"]
                 },
                 new ComponentSpec
                 {
                     Name = "Ajure Worker",
                     Responsibility = "Run generation, independent validation, repair, rendering, and deterministic export.",
-                    Dependencies = ["GitHub Copilot SDK", "Azure Storage"],
+                    Dependencies = ["OpenAI/Anthropic/Gemini APIs", "SQLite"],
                     RequirementIds = ["FR-001", "FR-002", "NFR-001"]
                 }
             ],
@@ -390,7 +390,7 @@ public static class SimulatedSpecFactory
             Security =
             [
                 "Authorization is enforced at the project ownership boundary.",
-                "Copilot sessions expose no tools and reject every permission request.",
+                "Model requests contain no tool definitions.",
                 "Secrets, prompt bodies, and model response bodies are never logged."
             ],
             Reliability =
@@ -407,14 +407,14 @@ public static class SimulatedSpecFactory
             ],
             Deployment =
             [
-                "Aspire orchestrates the API, Worker, and local Azurite executable.",
-                "The later production deployment targets Azure without introducing Docker into local development.",
+                "API and Worker share an operator-configured SQLite path.",
+                "The application runs on a standard .NET host without a required cloud account.",
                 "Health checks gate service readiness."
             ],
             TestingStrategy =
             [
                 "Unit tests cover parsing, normalization, consensus, repair scope, rendering, and ZIP determinism.",
-                "Integration tests cover Azure Storage, queue retry, SSE replay, and API problem details.",
+                "Integration tests cover SQLite storage, queue retry, SSE replay, and API problem details.",
                 "End-to-end tests cover simulated and real-model generation through Ready export."
             ],
             ImplementationOrder =

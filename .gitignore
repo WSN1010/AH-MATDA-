@@ -482,4 +482,4 @@ $RECYCLE.BIN/
 *.swp
 
 # Local Aspire resources
-src/Ajure.AppHost/.azurite/
+src/Ajure.AppHost/.data/

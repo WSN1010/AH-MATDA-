@@ -296,11 +296,11 @@ public class HardGateTests
     }
 
     [Fact]
-    public void Hg13FailsWhenACopilotStageDidNotComplete()
+    public void Hg13FailsWhenAProviderStageDidNotComplete()
     {
-        var context = ValidationFixture.Context() with { CopilotStagesCompleted = false };
+        var context = ValidationFixture.Context() with { ProviderStagesCompleted = false };
 
-        Assert.False(Gate(HardGateEvaluator.Evaluate(context), HardGate.CopilotStageIncomplete).Passed);
+        Assert.False(Gate(HardGateEvaluator.Evaluate(context), HardGate.ProviderStageIncomplete).Passed);
     }
 
     [Fact]

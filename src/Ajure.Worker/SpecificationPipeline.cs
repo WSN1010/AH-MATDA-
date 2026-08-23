@@ -5,23 +5,17 @@ using Ajure.Agent;
 using Ajure.Infrastructure;
 using Ajure.Specification;
 using Ajure.Validation;
+using Microsoft.Extensions.Options;
 
 namespace Ajure.Worker;
 
 public sealed class SpecificationPipeline(
     AjureStore store,
     IServiceProvider services,
-    IConfiguration configuration)
+    IConfiguration configuration,
+    IOptions<ModelProviderOptions> modelOptions)
 {
     private const int MaximumRepairAttempts = 3;
-    private static readonly TimeSpan ModelTimeout = TimeSpan.FromSeconds(120);
-
-    private static readonly string[] DefaultModelPool =
-    [
-        "claude-opus-5",
-        "gpt-5.6-sol",
-        "claude-sonnet-5"
-    ];
 
     private static readonly string ProjectSpecSchema = JsonSchemaExporter
         .GetJsonSchemaAsNode(
@@ -36,8 +30,10 @@ public sealed class SpecificationPipeline(
         StringComparison.OrdinalIgnoreCase);
 
     private readonly string[] _configuredModels =
-        configuration.GetSection("Ajure:Review:ModelPool").Get<string[]>()
-        ?? DefaultModelPool;
+        configuration.GetSection(ModelProviderOptions.ModelPoolSectionName).Get<string[]>()
+        ?? [];
+    private readonly TimeSpan _modelTimeout =
+        TimeSpan.FromSeconds(modelOptions.Value.SessionTimeoutSeconds);
 
     public async Task GenerateAsync(JobMessage message, CancellationToken cancellationToken)
     {
@@ -105,7 +101,7 @@ public sealed class SpecificationPipeline(
                         modelPool[0],
                         AgentPrompts.Instructions(AgentRole.SpecArchitect),
                         BuildArchitectPrompt(project, version, decisions),
-                        ModelTimeout),
+                        _modelTimeout),
                     cancellationToken)
                 .ConfigureAwait(false);
             traces.Add(AgentExecutionTrace.Completed(
@@ -420,7 +416,7 @@ public sealed class SpecificationPipeline(
             var clusters = Array.Empty<FindingCluster>();
             IReadOnlyList<string> invalidEnvelopeCodes = ["deterministic_validation_failed"];
             IReadOnlyList<string> successfulModelIds = [];
-            var copilotStagesCompleted = false;
+            var providerStagesCompleted = false;
             var tieBreakResolved = true;
 
             if (deterministic.Passed)
@@ -440,7 +436,7 @@ public sealed class SpecificationPipeline(
                         modelPool,
                         BuildReviewPrompt(spec),
                         BuildSimulationPrompt(spec),
-                        ModelTimeout,
+                        _modelTimeout,
                         allowTieBreak: !tieBreakUsed,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -450,7 +446,7 @@ public sealed class SpecificationPipeline(
                 clusters = [.. modelResult.Clusters];
                 invalidEnvelopeCodes = modelResult.InvalidEnvelopeCodes;
                 successfulModelIds = modelResult.SuccessfulModelIds;
-                copilotStagesCompleted = modelResult.CopilotStagesCompleted;
+                providerStagesCompleted = modelResult.ProviderStagesCompleted;
                 tieBreakResolved = modelResult.TieBreakResolved;
                 criticalHistory.Add(clusters);
                 traces.AddRange(ToTraces(iteration, modelResult));
@@ -458,7 +454,7 @@ public sealed class SpecificationPipeline(
                         jobId,
                         "stage.completed",
                         "independent-review",
-                        copilotStagesCompleted ? "completed" : "failed",
+                        providerStagesCompleted ? "completed" : "failed",
                         $"Independent review iteration {iteration} completed with {clusters.Length} cluster(s).",
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -481,7 +477,7 @@ public sealed class SpecificationPipeline(
                 Regressions = regressions,
                 SuccessfulModelIds = successfulModelIds,
                 InvalidEnvelopeCodes = invalidEnvelopeCodes,
-                CopilotStagesCompleted = copilotStagesCompleted,
+                ProviderStagesCompleted = providerStagesCompleted,
                 TieBreakUsed = tieBreakUsed || modelResult?.TieBreakRequired == true,
                 TieBreakResolved = tieBreakResolved,
                 RepeatedCriticalFingerprints = repeated
@@ -493,7 +489,7 @@ public sealed class SpecificationPipeline(
                 || decision.Status == ReadyStatus.NeedsDecision
                 || repeated.Count > 0
                 || modelResult is null
-                || !modelResult.CopilotStagesCompleted
+                || !modelResult.ProviderStagesCompleted
                 || iteration >= MaximumRepairAttempts)
             {
                 break;
@@ -522,7 +518,7 @@ public sealed class SpecificationPipeline(
                         repairModel,
                         AgentPrompts.Instructions(AgentRole.RepairAgent),
                         BuildRepairPrompt(spec, repairInput),
-                        ModelTimeout),
+                        _modelTimeout),
                     cancellationToken)
                 .ConfigureAwait(false);
             var repaired = ParseProjectSpec(repairResponse.Content);
@@ -878,9 +874,9 @@ public sealed class SpecificationPipeline(
     private async Task<(IModelGateway Gateway, IReadOnlyList<string> Pool)> ResolveModelPoolAsync(
         CancellationToken cancellationToken)
     {
-        var runtime = services.GetRequiredService<CopilotAgentRuntime>();
-        var available = await runtime.ListModelsAsync(cancellationToken).ConfigureAwait(false);
-        return (runtime, ReviewerPlanner.ResolvePool(available, _configuredModels));
+        var gateway = services.GetRequiredService<IModelGateway>();
+        var available = await gateway.ListModelsAsync(cancellationToken).ConfigureAwait(false);
+        return (gateway, ReviewerPlanner.ResolvePool(available, _configuredModels));
     }
 
     private async Task CompleteJobAsync(

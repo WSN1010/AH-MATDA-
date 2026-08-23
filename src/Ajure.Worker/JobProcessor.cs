@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Ajure.Agent;
 using Ajure.Infrastructure;
+using Microsoft.Extensions.Options;
 
 namespace Ajure.Worker;
 
@@ -8,12 +9,15 @@ public sealed class JobProcessor(
     AjureStore store,
     IServiceProvider services,
     IConfiguration configuration,
+    IOptions<ModelProviderOptions> modelOptions,
     SpecificationPipeline pipeline)
 {
     private readonly bool _fakeModel = string.Equals(
         Environment.GetEnvironmentVariable("AJURE_FAKE_MODEL"),
         "true",
         StringComparison.OrdinalIgnoreCase);
+    private readonly TimeSpan _modelTimeout =
+        TimeSpan.FromSeconds(modelOptions.Value.SessionTimeoutSeconds);
 
     public async Task ProcessAsync(JobMessage message, CancellationToken cancellationToken)
     {
@@ -114,7 +118,7 @@ public sealed class JobProcessor(
                         pool[0],
                         AgentPrompts.Instructions(AgentRole.IdeaAnalyst),
                         BuildIdeaAnalysisPrompt(project),
-                        TimeSpan.FromSeconds(120)),
+                        _modelTimeout),
                     cancellationToken)
                 .ConfigureAwait(false);
             await store.AppendEventAsync(
@@ -134,7 +138,7 @@ public sealed class JobProcessor(
                         pool[1],
                         AgentPrompts.Instructions(AgentRole.DecisionFacilitator),
                         BuildDecisionPrompt(analysis.Content),
-                        TimeSpan.FromSeconds(120)),
+                        _modelTimeout),
                     cancellationToken)
                 .ConfigureAwait(false);
             foreach (var decision in DecisionEnvelopeParser.Parse(decisions.Content))
@@ -203,10 +207,10 @@ public sealed class JobProcessor(
         CancellationToken cancellationToken)
     {
         var gateway = services.GetService<IModelGateway>()
-            ?? throw new InvalidOperationException("Copilot model gateway is not configured.");
+            ?? throw new InvalidOperationException("The direct model gateway is not configured.");
         var available = await gateway.ListModelsAsync(cancellationToken).ConfigureAwait(false);
         var configured = configuration
-            .GetSection(CopilotRuntimeOptions.ModelPoolSectionName)
+            .GetSection(ModelProviderOptions.ModelPoolSectionName)
             .Get<string[]>() ?? [];
         return (gateway, ReviewerPlanner.ResolvePool(available, configured));
     }

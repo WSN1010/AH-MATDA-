@@ -17,7 +17,7 @@ public enum HardGate
     SecretOrProductCode = 10,
     RepeatedCriticalAfterRepair = 11,
     UnresolvedEvaluatorConflict = 12,
-    CopilotStageIncomplete = 13,
+    ProviderStageIncomplete = 13,
     InsufficientModelDiversity = 14
 }
 
@@ -53,8 +53,8 @@ public sealed record HardGateContext
 
     public bool TieBreakResolved { get; init; } = true;
 
-    /// <summary>False when a required Copilot SDK authoring or evaluation step did not complete (FR-016).</summary>
-    public bool CopilotStagesCompleted { get; init; } = true;
+    /// <summary>False when a required direct-provider authoring or evaluation step did not complete (FR-016).</summary>
+    public bool ProviderStagesCompleted { get; init; } = true;
 }
 
 /// <summary>Hard gate evaluation (EVALUATION 4). Every gate is decided from data, never from a score.</summary>
@@ -136,9 +136,9 @@ public static class HardGateEvaluator
                 !context.TieBreakUsed || context.TieBreakResolved,
                 "Evaluator results still conflict after the single allowed tie-break."),
             Result(
-                HardGate.CopilotStageIncomplete,
-                context.CopilotStagesCompleted,
-                "A required Copilot SDK authoring or evaluation step did not complete."),
+                HardGate.ProviderStageIncomplete,
+                context.ProviderStagesCompleted,
+                "A required direct-provider authoring or evaluation step did not complete."),
             Result(
                 HardGate.InsufficientModelDiversity,
                 distinctModels >= RequiredModelDiversity && context.InvalidEnvelopeCodes.Count == 0,

@@ -12,6 +12,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Ajure.Agent.EvaluationTests/Ajure.Agent.EvaluationTests.csproj" />
     <Project Path="tests/Ajure.Api.IntegrationTests/Ajure.Api.IntegrationTests.csproj" />
+    <Project Path="tests/Ajure.Infrastructure.Tests/Ajure.Infrastructure.Tests.csproj" />
     <Project Path="tests/Ajure.Specification.Tests/Ajure.Specification.Tests.csproj" />
     <Project Path="tests/Ajure.Validation.Tests/Ajure.Validation.Tests.csproj" />
   </Folder>

@@ -33,7 +33,10 @@ public static class ReviewerPlanner
         var available = availableModels
             .Select(static model => model.Id)
             .ToHashSet(StringComparer.Ordinal);
-        var pool = configuredPool
+        var requested = configuredPool.Count == 0
+            ? availableModels.Select(static model => model.Id)
+            : configuredPool;
+        var pool = requested
             .Where(available.Contains)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
