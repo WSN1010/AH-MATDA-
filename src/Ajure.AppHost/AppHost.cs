@@ -1,6 +1,6 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
-var fakeModel = builder.Configuration["AJURE_FAKE_MODEL"] ?? "true";
+var fakeModel = builder.Configuration["AJURE_FAKE_MODEL"] ?? "false";
 var dataPath = Path.GetFullPath(
     builder.Configuration["AJURE_DATA_PATH"]
     ?? Path.Combine(builder.AppHostDirectory, ".data", "ajure.db"));

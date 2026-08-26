@@ -65,7 +65,7 @@
 
 필요한 도구는 .NET 10 SDK, Node.js, npm이다. Docker, Azure 계정, GitHub Copilot 로그인은 필요하지 않다.
 
-Windows에서는 `start-ajure.bat`을 더블클릭하면 Aspire 없이 API, Worker, Web이 각각 실행되고 브라우저가 열린다. 첫 실행 시 Web 의존성을 자동으로 설치하며, 기존 AppHost의 데이터와 모델 API 설정을 그대로 사용한다.
+Windows에서는 `start-ajure.bat`을 더블클릭하면 Aspire 없이 API, Worker, Web이 각각 실행되고 브라우저가 열린다. 첫 실행 시 Web 의존성을 자동으로 설치하며, 기존 AppHost의 데이터와 모델 API 설정을 실제 모델 모드에서 그대로 사용한다. 생성 전에 모델 설정 화면에서 공급자 두 개 이상을 구성해야 한다.
 
 Aspire를 직접 사용할 때는 다음 명령을 실행한다.
 

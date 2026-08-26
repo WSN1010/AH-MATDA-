@@ -31,7 +31,7 @@ if not exist "src\Ajure.AppHost\.data" mkdir "src\Ajure.AppHost\.data"
 set "AJURE_DATA_PATH=%CD%\src\Ajure.AppHost\.data\ajure.db"
 set "ASPNETCORE_ENVIRONMENT=Development"
 set "DOTNET_ENVIRONMENT=Development"
-if not defined AJURE_FAKE_MODEL set "AJURE_FAKE_MODEL=true"
+if not defined AJURE_FAKE_MODEL set "AJURE_FAKE_MODEL=false"
 set "API_HTTP=http://127.0.0.1:5037"
 set "VITE_AJURE_API_MODE=live"
 
