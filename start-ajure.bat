@@ -26,9 +26,9 @@ if not exist "src\Ajure.Web\node_modules" (
     )
 )
 
-if not exist ".data" mkdir ".data"
+if not exist "src\Ajure.AppHost\.data" mkdir "src\Ajure.AppHost\.data"
 
-set "AJURE_DATA_PATH=%CD%\.data\ajure.db"
+set "AJURE_DATA_PATH=%CD%\src\Ajure.AppHost\.data\ajure.db"
 set "ASPNETCORE_ENVIRONMENT=Development"
 set "DOTNET_ENVIRONMENT=Development"
 if not defined AJURE_FAKE_MODEL set "AJURE_FAKE_MODEL=true"
